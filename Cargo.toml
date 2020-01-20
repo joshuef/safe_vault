@@ -31,8 +31,8 @@ quick-error = "~1.2.2"
 rand = "~0.6.5"
 rand_chacha = "~0.1.1"
 routing_rand_core = { package = "rand_core", version = "~0.5.1" }
-routing = { git = "https://github.com/maidsafe/routing.git", branch = "fleming" }
-safe-nd = "~0.7.0"
+routing = { git = "https://github.com/maidsafe/routing.git", rev = "9e6c2301352ad5be6b76f277188e3cbd2fda866a"}
+safe-nd = "~0.7.2"
 self_update = "0.5.1"
 serde = { version = "~1.0.97", features = ["derive"] }
 serde_json = "~1.0.40"
@@ -52,3 +52,7 @@ doc = false
 mock_base = ["routing/mock_base", "fxhash", "hex_fmt", "mock-quic-p2p"]
 mock = ["mock_base"]
 mock_parsec = ["routing/mock", "mock_base"]
+
+
+[patch.crates-io]
+safe-nd = { git = "https://github.com/joshuef/safe-nd.git", rev = "9ac90e0e2db9d7ccd2dded4f2f587a91fb2853a3"}

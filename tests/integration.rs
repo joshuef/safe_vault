@@ -29,13 +29,13 @@ use rand::{distributions::Standard, Rng};
 use safe_nd::{
     AData, ADataAddress, ADataAppendOperation, ADataEntry, ADataIndex, ADataOwner,
     ADataPermissions, ADataPubPermissionSet, ADataPubPermissions, ADataUnpubPermissionSet,
-    ADataUnpubPermissions, ADataUser, AppPermissions, AppendOnlyData, ClientFullId, Coins,
-    EntryError, Error as NdError, IData, IDataAddress, LoginPacket, MData, MDataAction,
-    MDataAddress, MDataEntries, MDataKind, MDataPermissionSet, MDataSeqEntryActions, MDataSeqValue,
-    MDataUnseqEntryActions, MDataValue, MDataValues, Message, MessageId, PubImmutableData,
-    PubSeqAppendOnlyData, PubUnseqAppendOnlyData, PublicKey, Request, Response, Result as NdResult,
-    SeqAppendOnly, SeqMutableData, Transaction, UnpubImmutableData, UnpubSeqAppendOnlyData,
-    UnpubUnseqAppendOnlyData, UnseqAppendOnly, UnseqMutableData, XorName,
+    ADataUnpubPermissions, ADataUser, AppFullId, AppPermissions, AppendOnlyData, AuthToken,
+    ClientFullId, Coins, EntryError, Error as NdError, FullId, IData, IDataAddress, LoginPacket,
+    MData, MDataAction, MDataAddress, MDataEntries, MDataKind, MDataPermissionSet,
+    MDataSeqEntryActions, MDataSeqValue, MDataUnseqEntryActions, MDataValue, MDataValues, Message,
+    MessageId, PubImmutableData, PubSeqAppendOnlyData, PubUnseqAppendOnlyData, PublicKey, Request,
+    Response, Result as NdResult, SeqAppendOnly, SeqMutableData, Transaction, UnpubImmutableData,
+    UnpubSeqAppendOnlyData, UnpubUnseqAppendOnlyData, UnseqAppendOnly, UnseqMutableData, XorName,
 };
 use safe_vault::COST_OF_PUT;
 use std::collections::{BTreeMap, BTreeSet};
@@ -46,6 +46,22 @@ fn client_connects() {
     let mut env = Environment::new();
     let client = env.new_connected_client();
     let _app = env.new_connected_app(client.public_id().clone());
+}
+
+fn generate_token_w_caveat_for_random_app(client: ClientFullId) -> AuthToken {
+    use rand::thread_rng;
+
+    let id = FullId::App(AppFullId::new_bls(
+        &mut thread_rng(),
+        client.public_id().clone(),
+    ));
+
+    let mut token = AuthToken::new().unwrap();
+    let caveat = ("expire".to_string(), "nowthen".to_string());
+
+    token.add_caveat(caveat, &id).unwrap();
+
+    token
 }
 
 #[test]
@@ -62,6 +78,7 @@ fn invalid_signature() {
         request: request.clone(),
         message_id,
         signature: None,
+        token: None,
     });
     env.poll();
     match client.expect_response(message_id, &mut env) {
@@ -79,6 +96,7 @@ fn invalid_signature() {
         request,
         message_id,
         signature: Some(signature),
+        token: None,
     });
     env.poll();
     match client.expect_response(message_id, &mut env) {
@@ -476,6 +494,7 @@ fn coin_operations_by_app() {
         Request::InsAuthKey {
             key: *app.public_id().public_key(),
             version: 1,
+            // TODO: move perms to token
             permissions: AppPermissions {
                 transfer_coins: true,
                 get_balance: true,

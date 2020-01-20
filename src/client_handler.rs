@@ -27,10 +27,10 @@ use lazy_static::lazy_static;
 use log::{debug, error, info, trace, warn};
 use rand::{CryptoRng, Rng};
 use safe_nd::{
-    AData, ADataAddress, AppPermissions, AppPublicId, Coins, ConnectionInfo, Error as NdError,
-    HandshakeRequest, HandshakeResponse, IData, IDataAddress, IDataKind, LoginPacket, MData,
-    Message, MessageId, NodePublicId, Notification, PublicId, PublicKey, Request, Response,
-    Result as NdResult, Signature, Transaction, TransactionId, XorName,
+    AData, ADataAddress, AppPermissions, AppPublicId, AuthToken, Coins, ConnectionInfo,
+    Error as NdError, HandshakeRequest, HandshakeResponse, IData, IDataAddress, IDataKind,
+    LoginPacket, MData, Message, MessageId, NodePublicId, Notification, PublicId, PublicKey,
+    Request, Response, Result as NdResult, Signature, Transaction, TransactionId, XorName,
 };
 use serde::Serialize;
 use std::{
@@ -192,6 +192,7 @@ impl ClientHandler {
                     request,
                     message_id,
                     signature,
+                    token,
                 }) => {
                     // We could receive a consensused vault rpc contains a client request,
                     // before receiving the request from that client directly.
@@ -208,7 +209,8 @@ impl ClientHandler {
 
                     if let Entry::Vacant(ve) = self.pending_msg_ids.entry(message_id) {
                         let _ = ve.insert(peer_addr);
-                        return self.handle_client_request(&client, request, message_id, signature);
+                        return self
+                            .handle_client_request(&client, request, message_id, signature, token);
                     } else {
                         info!(
                             "Pending MessageId {:?} reused - ignoring client message.",
@@ -264,18 +266,21 @@ impl ClientHandler {
         request: Request,
         message_id: MessageId,
         signature: Option<Signature>,
+        token: Option<AuthToken>,
     ) -> Option<Action> {
         use Request::*;
         trace!(
-            "{}: Received ({:?} {:?}) from {}",
+            "{}: Received ({:?} {:?} {:?}) from {}",
             self,
             request,
             message_id,
+            token,
             client.public_id
         );
 
+        // TODO validate token here.
         self.verify_signature(&client.public_id, &request, message_id, signature)?;
-        self.authorise_app(&client.public_id, &request, message_id)?;
+        self.authorise_app(&client.public_id, &request, message_id, token)?;
         self.verify_consistent_address(&request, message_id)?;
 
         match request {
@@ -436,6 +441,12 @@ impl ClientHandler {
                 false
             }
         }
+    }
+
+    /// Verifies token validity for a given PublicId
+    fn is_valid_token_for_app(&self, app_id: &AppPublicId, token: &AuthToken) -> bool {
+        let public_id = &PublicId::App(app_id.clone());
+        token.clone().is_valid_for_public_id(public_id)
     }
 
     fn handle_get_mdata(
@@ -1688,12 +1699,51 @@ impl ClientHandler {
         }
     }
 
+    // TODO: Should we reply to message here?
+    /// Wrapper func to return result of token verification.
+    fn verify_token(
+        &mut self,
+        app_id: &AppPublicId,
+        request: &Request,
+        message_id: MessageId,
+        token: &Option<AuthToken>,
+    ) -> Result<(), String> {
+        let valid = match token {
+            Some(auth_token) => self.is_valid_token_for_app(app_id, &auth_token),
+            None => {
+                warn!(
+                    "{}: ({:?}/{:?}) from {} has invalid token",
+                    self, request, message_id, app_id
+                );
+
+                // TODO: Send a response about NO TOKEN.
+                return Err("No token provided".to_string());
+            }
+        };
+
+        if valid {
+            Ok(())
+        } else {
+            warn!(
+                "{}: ({:?}/{:?}) from {} has invalid token",
+                self, request, message_id, app_id
+            );
+            // self.send_response_to_client(
+            //     message_id,
+            //     request.error_response(NdError::InvalidSignature),
+            // );
+            // None
+            Err("Invalid token provided".to_string())
+        }
+    }
+
     // If the client is app, check if it is authorised to perform the given request.
     fn authorise_app(
         &mut self,
         public_id: &PublicId,
         request: &Request,
         message_id: MessageId,
+        token: Option<AuthToken>,
     ) -> Option<()> {
         let app_id = match public_id {
             PublicId::App(app_id) => app_id,
@@ -1702,19 +1752,29 @@ impl ClientHandler {
 
         let result = match utils::authorisation_kind(request) {
             AuthorisationKind::GetPub => Ok(()),
-            AuthorisationKind::GetUnpub => self.check_app_permissions(app_id, |_| true),
+            AuthorisationKind::GetUnpub => {
+                self.check_app_permissions(app_id, token, request, message_id, |_| true)
+            }
             AuthorisationKind::GetBalance => {
-                self.check_app_permissions(app_id, |perms| perms.get_balance)
+                self.check_app_permissions(app_id, token, request, message_id, |perms| {
+                    perms.get_balance
+                })
             }
             AuthorisationKind::Mut => {
-                self.check_app_permissions(app_id, |perms| perms.perform_mutations)
+                self.check_app_permissions(app_id, token, request, message_id, |perms| {
+                    perms.perform_mutations
+                })
             }
             AuthorisationKind::TransferCoins => {
-                self.check_app_permissions(app_id, |perms| perms.transfer_coins)
+                self.check_app_permissions(app_id, token, request, message_id, |perms| {
+                    perms.transfer_coins
+                })
             }
-            AuthorisationKind::MutAndTransferCoins => self.check_app_permissions(app_id, |perms| {
-                perms.transfer_coins && perms.perform_mutations
-            }),
+            AuthorisationKind::MutAndTransferCoins => {
+                self.check_app_permissions(app_id, token, request, message_id, |perms| {
+                    perms.transfer_coins && perms.perform_mutations
+                })
+            }
             AuthorisationKind::ManageAppKeys => Err(NdError::AccessDenied),
         };
 
@@ -1727,10 +1787,17 @@ impl ClientHandler {
     }
 
     fn check_app_permissions(
-        &self,
+        &mut self,
         app_id: &AppPublicId,
+        token: Option<AuthToken>,
+        request: &Request,
+        message_id: MessageId,
         check: impl FnOnce(AppPermissions) -> bool,
     ) -> Result<(), NdError> {
+        // TODO: Pass desired permission check into verify_token
+        //      remove the current permission checks...
+        self.verify_token(app_id, &request, message_id, &token)?;
+
         if self
             .auth_keys
             .app_permissions(app_id)

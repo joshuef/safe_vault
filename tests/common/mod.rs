@@ -23,9 +23,9 @@ use mock_quic_p2p::{self as quic_p2p, Builder, Event, Network, NodeInfo, OurType
 #[cfg(feature = "mock_parsec")]
 use routing::{self, NetworkConfig, Node};
 use safe_nd::{
-    AppFullId, AppPublicId, ClientFullId, ClientPublicId, Coins, Error, HandshakeRequest,
-    HandshakeResponse, Message, MessageId, Notification, PublicId, PublicKey, Request, Response,
-    Signature, Transaction, TransactionId,
+    AppFullId, AppPublicId, AuthToken, ClientFullId, ClientPublicId, Coins, Error, FullId,
+    HandshakeRequest, HandshakeResponse, Message, MessageId, Notification, PublicId, PublicKey,
+    Request, Response, Signature, Transaction, TransactionId,
 };
 #[cfg(feature = "mock")]
 use safe_vault::{
@@ -329,27 +329,6 @@ impl AsMutSlice<TestVault> for [TestVault] {
     }
 }
 
-pub enum FullId {
-    Client(ClientFullId),
-    App(AppFullId),
-}
-
-impl FullId {
-    fn sign<T: AsRef<[u8]>>(&self, data: T) -> Signature {
-        match self {
-            FullId::Client(full_id) => full_id.sign(data),
-            FullId::App(full_id) => full_id.sign(data),
-        }
-    }
-
-    fn public_id(&self) -> PublicId {
-        match self {
-            FullId::Client(full_id) => PublicId::Client(full_id.public_id().clone()),
-            FullId::App(full_id) => PublicId::App(full_id.public_id().clone()),
-        }
-    }
-}
-
 pub trait TestClientTrait {
     fn quic_p2p(&mut self) -> &mut QuicP2p;
     fn rx(&self) -> &Receiver<Event>;
@@ -467,10 +446,19 @@ pub trait TestClientTrait {
         let to_sign = unwrap!(bincode::serialize(&to_sign));
         let signature = self.full_id().sign(&to_sign);
 
+        // TODO: here we create + sign a token w/ our full ID. To be verified against
+        // auth held app PublicId
+        let mut app_auth_token = AuthToken::new().unwrap();
+
+        // Add some caveat for now to generate sig
+        let caveat = ("expire".to_string(), "nowthen".to_string());
+        app_auth_token.add_caveat(caveat, self.full_id()).unwrap();
+
         let msg = Message::Request {
             request,
             message_id,
             signature: Some(signature),
+            token: Some(app_auth_token),
         };
 
         self.send(&msg);

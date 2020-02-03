@@ -446,7 +446,7 @@ impl ClientHandler {
     /// Verifies token validity for a given PublicId
     fn is_valid_token_for_app(&self, app_id: &AppPublicId, token: &AuthToken) -> bool {
         let public_id = &PublicId::App(app_id.clone());
-        token.clone().is_valid_for_public_id(public_id)
+        token.is_valid_for_public_id(public_id)
     }
 
     fn handle_get_mdata(
@@ -1704,7 +1704,6 @@ impl ClientHandler {
     fn verify_token(
         &mut self,
         app_id: &AppPublicId,
-        request: &Request,
         message_id: MessageId,
         token: &Option<AuthToken>,
     ) -> Result<(), String> {
@@ -1712,11 +1711,10 @@ impl ClientHandler {
             Some(auth_token) => self.is_valid_token_for_app(app_id, &auth_token),
             None => {
                 warn!(
-                    "{}: ({:?}/{:?}) from {} has invalid token",
-                    self, request, message_id, app_id
+                    "{}: (Message: {:?}) from {} has invalid token",
+                    self, message_id, app_id
                 );
 
-                // TODO: Send a response about NO TOKEN.
                 return Err("No token provided".to_string());
             }
         };
@@ -1725,14 +1723,9 @@ impl ClientHandler {
             Ok(())
         } else {
             warn!(
-                "{}: ({:?}/{:?}) from {} has invalid token",
-                self, request, message_id, app_id
+                "{}: (Message: {:?}) from {} has invalid token",
+                self, message_id, app_id
             );
-            // self.send_response_to_client(
-            //     message_id,
-            //     request.error_response(NdError::InvalidSignature),
-            // );
-            // None
             Err("Invalid token provided".to_string())
         }
     }
@@ -1753,25 +1746,25 @@ impl ClientHandler {
         let result = match utils::authorisation_kind(request) {
             AuthorisationKind::GetPub => Ok(()),
             AuthorisationKind::GetUnpub => {
-                self.check_app_permissions(app_id, token, request, message_id, |_| true)
+                self.check_app_permissions(app_id, token, message_id, |_| true)
             }
             AuthorisationKind::GetBalance => {
-                self.check_app_permissions(app_id, token, request, message_id, |perms| {
+                self.check_app_permissions(app_id, token, message_id, |perms| {
                     perms.get_balance
                 })
             }
             AuthorisationKind::Mut => {
-                self.check_app_permissions(app_id, token, request, message_id, |perms| {
+                self.check_app_permissions(app_id, token, message_id, |perms| {
                     perms.perform_mutations
                 })
             }
             AuthorisationKind::TransferCoins => {
-                self.check_app_permissions(app_id, token, request, message_id, |perms| {
+                self.check_app_permissions(app_id, token, message_id, |perms| {
                     perms.transfer_coins
                 })
             }
             AuthorisationKind::MutAndTransferCoins => {
-                self.check_app_permissions(app_id, token, request, message_id, |perms| {
+                self.check_app_permissions(app_id, token, message_id, |perms| {
                     perms.transfer_coins && perms.perform_mutations
                 })
             }
@@ -1790,13 +1783,12 @@ impl ClientHandler {
         &mut self,
         app_id: &AppPublicId,
         token: Option<AuthToken>,
-        request: &Request,
         message_id: MessageId,
         check: impl FnOnce(AppPermissions) -> bool,
     ) -> Result<(), NdError> {
         // TODO: Pass desired permission check into verify_token
         //      remove the current permission checks...
-        self.verify_token(app_id, &request, message_id, &token)?;
+        self.verify_token(app_id, message_id, &token)?;
 
         if self
             .auth_keys

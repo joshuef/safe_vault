@@ -27,10 +27,11 @@ use lazy_static::lazy_static;
 use log::{debug, error, info, trace, warn};
 use rand::{CryptoRng, Rng};
 use safe_nd::{
-    AData, ADataAddress, AppPermissions, AppPublicId, AuthToken, Coins, ConnectionInfo,
-    Error as NdError, HandshakeRequest, HandshakeResponse, IData, IDataAddress, IDataKind,
-    LoginPacket, MData, Message, MessageId, NodePublicId, Notification, PublicId, PublicKey,
-    Request, Response, Result as NdResult, Signature, Transaction, TransactionId, XorName,
+    AData, ADataAddress, AppPermissions, AppPublicId, AuthToken, ClientPublicId, Coins,
+    ConnectionInfo, Error as NdError, HandshakeRequest, HandshakeResponse, IData, IDataAddress,
+    IDataKind, LoginPacket, MData, Message, MessageId, NodePublicId, Notification, PublicId,
+    PublicKey, Request, Response, Result as NdResult, Signature, Transaction, TransactionId,
+    XorName,
 };
 use serde::Serialize;
 use std::{
@@ -444,9 +445,9 @@ impl ClientHandler {
     }
 
     /// Verifies token validity for a given PublicId
-    fn is_valid_token_for_app(&self, app_id: &AppPublicId, token: &AuthToken) -> bool {
-        let public_id = &PublicId::App(app_id.clone());
-        token.is_valid_for_public_id(public_id)
+    fn is_valid_token_for_app(&self, client_id: &ClientPublicId, token: &AuthToken) -> bool {
+        let public_id = &PublicId::Client(client_id.clone());
+        token.is_valid_for_public_id(public_id).is_ok()
     }
 
     fn handle_get_mdata(
@@ -1708,7 +1709,7 @@ impl ClientHandler {
         token: &Option<AuthToken>,
     ) -> Result<(), String> {
         let valid = match token {
-            Some(auth_token) => self.is_valid_token_for_app(app_id, &auth_token),
+            Some(auth_token) => self.is_valid_token_for_app(app_id.owner(), &auth_token),
             None => {
                 warn!(
                     "{}: (Message: {:?}) from {} has invalid token",
@@ -1749,9 +1750,7 @@ impl ClientHandler {
                 self.check_app_permissions(app_id, token, message_id, |_| true)
             }
             AuthorisationKind::GetBalance => {
-                self.check_app_permissions(app_id, token, message_id, |perms| {
-                    perms.get_balance
-                })
+                self.check_app_permissions(app_id, token, message_id, |perms| perms.get_balance)
             }
             AuthorisationKind::Mut => {
                 self.check_app_permissions(app_id, token, message_id, |perms| {
@@ -1759,9 +1758,7 @@ impl ClientHandler {
                 })
             }
             AuthorisationKind::TransferCoins => {
-                self.check_app_permissions(app_id, token, message_id, |perms| {
-                    perms.transfer_coins
-                })
+                self.check_app_permissions(app_id, token, message_id, |perms| perms.transfer_coins)
             }
             AuthorisationKind::MutAndTransferCoins => {
                 self.check_app_permissions(app_id, token, message_id, |perms| {

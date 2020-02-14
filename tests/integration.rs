@@ -82,7 +82,7 @@ fn invalid_signature() {
     });
     env.poll();
     match client.expect_response(message_id, &mut env) {
-        Response::GetIData(Err(NdError::InvalidSignature)) => (),
+        Response::GetIData(Err(NdError::InvalidAppSignature)) => (),
         x => unexpected!(x),
     }
 
@@ -100,7 +100,7 @@ fn invalid_signature() {
     });
     env.poll();
     match client.expect_response(message_id, &mut env) {
-        Response::GetIData(Err(NdError::InvalidSignature)) => (),
+        Response::GetIData(Err(NdError::InvalidAppSignature)) => (),
         x => unexpected!(x),
     }
 }
@@ -176,7 +176,7 @@ fn login_packets() {
             &mut env,
             &mut client,
             Request::GetLoginPacket(login_packet_locator),
-            NdError::AccessDenied,
+            NdError::AccessDenied("Permission denied".to_string()),
         );
     }
 }
@@ -285,7 +285,7 @@ fn create_login_packet_for_other() {
         &mut env,
         &mut established_client,
         Request::GetLoginPacket(login_packet_locator),
-        NdError::AccessDenied,
+        NdError::AccessDenied("Permission denied".to_string()),
     );
 }
 
@@ -344,7 +344,7 @@ fn update_login_packet() {
             &mut env,
             &mut client,
             Request::UpdateLoginPacket(login_packet),
-            NdError::AccessDenied,
+            NdError::AccessDenied("Permission denied".to_string()),
         );
     }
 }
@@ -566,7 +566,7 @@ fn coin_operations_by_app_with_insufficient_permissions() {
         &mut env,
         &mut app,
         Request::GetBalance,
-        NdError::AccessDenied,
+        NdError::AccessDenied("Permission denied".to_string()),
     );
 
     // The attempt to transfer some coins by the app fails.
@@ -580,7 +580,7 @@ fn coin_operations_by_app_with_insufficient_permissions() {
             amount: unwrap!(Coins::from_nano(1)),
             transaction_id,
         },
-        NdError::AccessDenied,
+        NdError::AccessDenied("Permission denied".to_string()),
     );
 
     // The owners balance is unchanged.
@@ -796,13 +796,13 @@ fn put_append_only_data() {
         &mut env,
         &mut client_b,
         Request::DeleteAData(*unpub_seq_adata.address()),
-        NdError::AccessDenied,
+        NdError::AccessDenied("Permission denied".to_string()),
     );
     common::send_request_expect_err(
         &mut env,
         &mut client_b,
         Request::DeleteAData(*unpub_unseq_adata.address()),
-        NdError::AccessDenied,
+        NdError::AccessDenied("Permission denied".to_string()),
     );
 
     // Delete the data
@@ -992,7 +992,7 @@ fn get_unpub_append_only_data() {
         &mut env,
         &mut other_client,
         Request::GetAData(address),
-        NdError::AccessDenied,
+        NdError::AccessDenied("Permission denied".to_string()),
     );
 }
 
@@ -1494,7 +1494,7 @@ fn pub_append_only_data_put_permissions() {
             permissions: perms_1.clone(),
             permissions_index: 1,
         },
-        NdError::AccessDenied,
+        NdError::AccessDenied("Permission denied".to_string()),
     );
 
     common::perform_mutation(
@@ -1595,7 +1595,7 @@ fn unpub_append_only_data_put_permissions() {
             permissions: perms_1.clone(),
             permissions_index: 1,
         },
-        NdError::AccessDenied,
+        NdError::AccessDenied("Permission denied".to_string()),
     );
 
     common::perform_mutation(
@@ -1717,7 +1717,7 @@ fn append_only_data_put_owners() {
             owner: owner_1,
             owners_index: 1,
         },
-        NdError::AccessDenied,
+        NdError::AccessDenied("Permission denied".to_string()),
     );
     common::perform_mutation(
         &mut env,
@@ -2072,7 +2072,7 @@ fn get_immutable_data_from_other_owner() {
         Request::PutIData(unpub_idata.clone()),
     );
     common::send_request_expect_ok(&mut env, &mut client_a, request.clone(), unpub_idata);
-    common::send_request_expect_err(&mut env, &mut client_b, request, NdError::AccessDenied);
+    common::send_request_expect_err(&mut env, &mut client_b, request, NdError::AccessDenied("Permission denied".to_string()));
 }
 
 #[test]
@@ -2216,7 +2216,7 @@ fn delete_immutable_data() {
         &mut env,
         &mut client_b,
         Request::DeleteUnpubIData(IDataAddress::Unpub(unpub_idata_address)),
-        NdError::AccessDenied,
+        NdError::AccessDenied("Permission denied".to_string()),
     );
 
     // Delete unpublished data without having the balance
@@ -2303,13 +2303,13 @@ fn auth_keys() {
         &mut env,
         &mut app,
         Request::ListAuthKeysAndVersion,
-        NdError::AccessDenied,
+        NdError::AccessDenied("Permission denied".to_string()),
     );
     common::send_request_expect_err(
         &mut env,
         &mut app,
         make_ins_request(2),
-        NdError::AccessDenied,
+        NdError::AccessDenied("Permission denied".to_string()),
     );
     let del_auth_key_request = Request::DelAuthKey {
         key: *app.public_id().public_key(),
@@ -2319,7 +2319,7 @@ fn auth_keys() {
         &mut env,
         &mut app,
         del_auth_key_request.clone(),
-        NdError::AccessDenied,
+        NdError::AccessDenied("Permission denied".to_string()),
     );
 
     // Remove the app, then list the keys.
@@ -2464,7 +2464,7 @@ fn app_permissions() {
         &mut env,
         &mut app_2,
         Request::GetAData(unpub_data_address),
-        NdError::AccessDenied,
+        NdError::AccessDenied("Permission denied".to_string()),
     );
 
     // Only the app with the transfer coins permission can perform mutable request.
@@ -2488,13 +2488,13 @@ fn app_permissions() {
             &mut env,
             &mut app_1,
             Request::AppendUnseq(append.clone()),
-            NdError::AccessDenied,
+            NdError::AccessDenied("Permission denied".to_string()),
         );
         common::send_request_expect_err(
             &mut env,
             &mut app_2,
             Request::AppendUnseq(append),
-            NdError::AccessDenied,
+            NdError::AccessDenied("Permission denied".to_string()),
         );
     }
 
@@ -2511,7 +2511,7 @@ fn app_permissions() {
             amount: unwrap!(Coins::from_nano(50)),
             transaction_id: 0,
         },
-        NdError::AccessDenied,
+        NdError::AccessDenied("Permission denied".to_string()),
     );
 
     // App1 can read balance
@@ -2545,7 +2545,7 @@ fn app_permissions() {
         &mut env,
         &mut app_3,
         Request::PutMData(MData::from(data)),
-        NdError::AccessDenied,
+        NdError::AccessDenied("Permission denied".to_string()),
     );
 
     // App 3 cannot read balance of the user
@@ -2553,7 +2553,7 @@ fn app_permissions() {
         &mut env,
         &mut app_3,
         Request::GetBalance,
-        NdError::AccessDenied,
+        NdError::AccessDenied("Permission denied".to_string()),
     )
 }
 
@@ -2910,7 +2910,7 @@ fn mutable_data_permissions() {
             address,
             actions: actions.into(),
         },
-        NdError::AccessDenied,
+        NdError::AccessDenied("Permission denied".to_string()),
     );
 
     // Insert permissions for client B.
@@ -2956,7 +2956,7 @@ fn mutable_data_permissions() {
             address,
             actions: actions.into(),
         },
-        NdError::AccessDenied,
+        NdError::AccessDenied("Permission denied".to_string()),
     );
 }
 
@@ -2996,7 +2996,7 @@ fn delete_mutable_data() {
         &mut env,
         &mut client_b,
         Request::DeleteMData(address),
-        NdError::AccessDenied,
+        NdError::AccessDenied("Permission denied".to_string()),
     );
     common::send_request_expect_ok(&mut env, &mut client_a, Request::GetBalance, balance_a);
 

@@ -447,7 +447,7 @@ impl ClientHandler {
     /// Verifies token validity for a given PublicId
     fn is_valid_token_for_app(&self, client_id: &ClientPublicId, token: &AuthToken) -> bool {
         let public_id = &PublicId::Client(client_id.clone());
-        token.is_valid_for_public_id(public_id).is_ok()
+        token.is_valid_for_public_key(&public_id.public_key()).is_ok()
     }
 
     fn handle_get_mdata(
@@ -1558,7 +1558,7 @@ impl ClientHandler {
                 if login_packet.authorised_getter() == requester_pub_key {
                     Ok(login_packet)
                 } else {
-                    Err(NdError::AccessDenied)
+                    Err(NdError::AccessDenied("Not the owner".to_string()))
                 }
             })
     }
@@ -1694,7 +1694,7 @@ impl ClientHandler {
         } else {
             self.send_response_to_client(
                 message_id,
-                request.error_response(NdError::InvalidSignature),
+                request.error_response(NdError::InvalidAppSignature),
             );
             None
         }
@@ -1765,7 +1765,7 @@ impl ClientHandler {
                     perms.transfer_coins && perms.perform_mutations
                 })
             }
-            AuthorisationKind::ManageAppKeys => Err(NdError::AccessDenied),
+            AuthorisationKind::ManageAppKeys => Err(NdError::AccessDenied("Not the owner".to_string() ) ),
         };
 
         if let Err(error) = result {
@@ -1795,7 +1795,7 @@ impl ClientHandler {
         {
             Ok(())
         } else {
-            Err(NdError::AccessDenied)
+            Err(NdError::AccessDenied("Permission denied".to_string()) )
         }
     }
 

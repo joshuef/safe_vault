@@ -1706,9 +1706,9 @@ impl ClientHandler {
         &mut self,
         app_id: &AppPublicId,
         message_id: MessageId,
-        token: AuthToken,
+        token: &AuthToken,
     ) -> Result<(), String> {
-        let valid = self.is_valid_token_for_app(app_id.owner(), &token);
+        let valid = self.is_valid_token_for_app(app_id.owner(), token);
         // let valid = match token {
         //     Some(auth_token) =>
         //     None => {
@@ -1745,49 +1745,104 @@ impl ClientHandler {
             _ => return Some(()),
         };
 
+        // remove these current permission checks...
         let result = match utils::authorisation_kind(request) {
             AuthorisationKind::GetPub => Ok(()),
             AuthorisationKind::GetUnpub => {
-                self.check_app_permissions(app_id, token, message_id, |_| true)
+                self.check_app_permissions(app_id, message_id, |_| true)
             }
             AuthorisationKind::GetBalance => {
-                self.check_app_permissions(app_id, token, message_id, |perms| perms.get_balance)
+                let balance_caveat = "balance".to_string();
+                self.check_app_permissions(app_id, message_id, |perms| perms.get_balance )
             }
             AuthorisationKind::Mut => {
-                self.check_app_permissions(app_id, token, message_id, |perms| {
+                self.check_app_permissions(app_id, message_id, |perms| {
                     perms.perform_mutations
                 })
             }
             AuthorisationKind::TransferCoins => {
-                self.check_app_permissions(app_id, token, message_id, |perms| perms.transfer_coins)
+                let transfer_caveat = "transfer".to_string();
+                self.check_app_permissions(app_id, message_id, |perms| perms.transfer_coins )
             }
             AuthorisationKind::MutAndTransferCoins => {
-                self.check_app_permissions(app_id, token, message_id, |perms| {
+                self.check_app_permissions(app_id, message_id, |perms| {
                     perms.transfer_coins && perms.perform_mutations
                 })
             }
             AuthorisationKind::ManageAppKeys => Err(NdError::AccessDenied("Not the owner".to_string() ) ),
         };
 
+        // early return for standard checks
         if let Err(error) = result {
             self.send_response_to_client(message_id, request.error_response(error));
+            return None;
+        }
+
+        let token_result = match utils::authorisation_kind(request) {
+            AuthorisationKind::GetPub => Ok(()),
+            AuthorisationKind::GetUnpub => {
+                self.check_app_token(app_id, token, message_id, None)
+            }
+            AuthorisationKind::GetBalance => {
+                let balance_caveat = "balance".to_string();
+                self.check_app_token(app_id, token, message_id, Some(balance_caveat) )
+            }
+            AuthorisationKind::Mut => {
+                self.check_app_token(app_id, token, message_id, None)
+            }
+            AuthorisationKind::TransferCoins => {
+                let transfer_caveat = "transfer".to_string();
+                self.check_app_token(app_id, token, message_id, Some(transfer_caveat))
+            }
+            AuthorisationKind::MutAndTransferCoins => {
+                self.check_app_token(app_id, token, message_id, None)
+            }
+            AuthorisationKind::ManageAppKeys => Err(NdError::AccessDenied("Not the owner".to_string() ) ),
+        };
+
+        if let Err(error) = token_result {
+            self.send_response_to_client(message_id, request.error_response(error));
             None
-        } else {
+        }
+        else {
             Some(())
         }
+
+
     }
 
-    fn check_app_permissions(
+
+    fn check_app_token(
         &mut self,
         app_id: &AppPublicId,
         token: Option<AuthToken>,
         message_id: MessageId,
-        check: impl FnOnce(AppPermissions) -> bool,
+        extra_caveat_to_check: Option<String>
     ) -> Result<(), NdError> {
-        // TODO: Pass desired permission check into verify_token
-        //      remove the current permission checks...
-        let valid = match token {
-            Some(auth_token) => self.verify_token(app_id, message_id, auth_token)?,
+        // simple func to check basic perms
+        fn caveat_truth_checker(contents: String) -> bool {
+            contents.as_str() == "true"
+        }
+
+        let valid : Result<(), NdError> = match token {
+            Some(auth_token) => {
+                // first validate the token.
+                self.verify_token(app_id, message_id, &auth_token)?;
+
+
+                let _extra_check_is_valid = match extra_caveat_to_check {
+                    // second... any general caveat checks...
+                    // currently limited to only one check with this setup.
+                    // TODO make this more flexible
+                    Some(caveat) => {
+                        let validity = auth_token.clone().verify_caveat( &caveat, caveat_truth_checker)?;
+                        validity
+                    }
+                    None => true
+                };
+
+                Ok(())
+            },
             None => {
                 // None doesn't mean error... this could be a client request. How to tell here if
                 // None would be correct?
@@ -1795,10 +1850,24 @@ impl ClientHandler {
                     "{}: (Message: {:?}) from {} has no token... has this come from a client?",
                     self, message_id, app_id
                 );
+
+                Ok(())
             }
         };
 
-        // self.verify_token(app_id, message_id, &token)?;
+        if valid.is_ok() {
+            Ok(())
+        } else {
+            Err(NdError::AccessDenied("Permission denied".to_string()) )
+        }
+    }
+
+    fn check_app_permissions(
+        &mut self,
+        app_id: &AppPublicId,
+        message_id: MessageId,
+        check: impl FnOnce(AppPermissions) -> bool ,
+    ) -> Result<(), NdError> {
 
         if self
             .auth_keys

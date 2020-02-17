@@ -480,9 +480,9 @@ fn coin_operations_by_app() {
             version: 1,
             // TODO: move perms to token
             permissions: AppPermissions {
-                transfer_coins: true,
-                get_balance: true,
-                perform_mutations: true,
+                transfer_coins: false,
+                get_balance: false,
+                perform_mutations: false,
             },
         },
     );

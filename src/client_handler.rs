@@ -1746,36 +1746,36 @@ impl ClientHandler {
             _ => return Some(()),
         };
 
-        // remove these current permission checks...
-        let result = match utils::authorisation_kind(request) {
-            AuthorisationKind::GetPub => Ok(()),
-            AuthorisationKind::GetUnpub => {
-                self.check_app_permissions(app_id, message_id, |_| true)
-            }
-            AuthorisationKind::GetBalance => {
-                self.check_app_permissions(app_id, message_id, |perms| perms.get_balance )
-            }
-            AuthorisationKind::Mut => {
-                self.check_app_permissions(app_id, message_id, |perms| {
-                    perms.perform_mutations
-                })
-            }
-            AuthorisationKind::TransferCoins => {
-                self.check_app_permissions(app_id, message_id, |perms| perms.transfer_coins )
-            }
-            AuthorisationKind::MutAndTransferCoins => {
-                self.check_app_permissions(app_id, message_id, |perms| {
-                    perms.transfer_coins && perms.perform_mutations
-                })
-            }
-            AuthorisationKind::ManageAppKeys => Err(NdError::AccessDenied("Not the owner".to_string() ) ),
-        };
+        // // remove these current permission checks...
+        // let result = match utils::authorisation_kind(request) {
+        //     AuthorisationKind::GetPub => Ok(()),
+        //     AuthorisationKind::GetUnpub => {
+        //         self.check_app_permissions(app_id, message_id, |_| true)
+        //     }
+        //     AuthorisationKind::GetBalance => {
+        //         self.check_app_permissions(app_id, message_id, |perms| perms.get_balance )
+        //     }
+        //     AuthorisationKind::Mut => {
+        //         self.check_app_permissions(app_id, message_id, |perms| {
+        //             perms.perform_mutations
+        //         })
+        //     }
+        //     AuthorisationKind::TransferCoins => {
+        //         self.check_app_permissions(app_id, message_id, |perms| perms.transfer_coins )
+        //     }
+        //     AuthorisationKind::MutAndTransferCoins => {
+        //         self.check_app_permissions(app_id, message_id, |perms| {
+        //             perms.transfer_coins && perms.perform_mutations
+        //         })
+        //     }
+        //     AuthorisationKind::ManageAppKeys => Err(NdError::AccessDenied("Not the owner".to_string() ) ),
+        // };
 
         // early return for standard checks
-        if let Err(error) = result {
-            self.send_response_to_client(message_id, request.error_response(error));
-            return None;
-        }
+        // if let Err(error) = result {
+        //     self.send_response_to_client(message_id, request.error_response(error));
+        //     return None;
+        // }
 
         let token_result = match utils::authorisation_kind(request) {
             AuthorisationKind::GetPub => Ok(()),
@@ -1786,7 +1786,7 @@ impl ClientHandler {
                 self.check_app_token(app_id, token, message_id, Some(GET_BALANCE.to_string()) )
             }
             AuthorisationKind::Mut => {
-                self.check_app_token(app_id, token, message_id, None)
+                self.check_app_token(app_id, token, message_id, Some(PERFORM_MUTATIONS.to_string()))
             }
             AuthorisationKind::TransferCoins => {
                 self.check_app_token(app_id, token, message_id, Some(TRANSFER_COINS.to_string()))
@@ -1818,7 +1818,9 @@ impl ClientHandler {
     ) -> Result<(), NdError> {
         // simple func to check basic perms
         fn caveat_truth_checker(contents: String) -> bool {
-            contents.as_str() == "true"
+            println!("CHECKING EXTRA CAVEATTTTTT contennnttt::::::::::: {:?}", &contents);
+
+            contents.as_str() == "false"
         }
 
         let valid : Result<(), NdError> = match token {
@@ -1832,6 +1834,8 @@ impl ClientHandler {
                     // currently limited to only one check with this setup.
                     // TODO make this more flexible
                     Some(caveat) => {
+
+                        println!("CHECKING EXTRA CAVEATTTTTT, {:?}", &caveat);
                         let validity = auth_token.clone().verify_caveat( &caveat, caveat_truth_checker)?;
                         validity
                     }
@@ -1841,14 +1845,12 @@ impl ClientHandler {
                 Ok(())
             },
             None => {
-                // None doesn't mean error... this could be a client request. How to tell here if
-                // None would be correct?
                 warn!(
-                    "{}: (Message: {:?}) from {} has no token... has this come from a client?",
+                    "{}: (Message: {:?}) from {} has no token.?",
                     self, message_id, app_id
                 );
 
-                Ok(())
+                Err(NdError::AccessDenied("No token provided".to_string()))
             }
         };
 

@@ -25,7 +25,7 @@ use routing::{self, NetworkConfig, Node};
 use safe_nd::{
     AppFullId, AppPublicId, AuthToken, ClientFullId, ClientPublicId, Coins, Error, FullId,
     HandshakeRequest, HandshakeResponse, Message, MessageId, Notification, PublicId, PublicKey,
-    Request, Response, Signature, Transaction, TransactionId,
+    Request, Response, SafeKey, Signature, Transaction, TransactionId,
 };
 #[cfg(feature = "mock")]
 use safe_vault::{
@@ -177,14 +177,22 @@ impl Environment {
         client
     }
 
-    pub fn new_connected_app(&mut self, owner: ClientPublicId) -> TestApp {
-        let mut app = TestApp::new_disconnected(&mut self.rng, owner);
+    pub fn new_connected_app(&mut self, owner: &FullId) -> TestApp {
+        let owner_full_id = match owner {
+            FullId::Client(id) => id,
+            _ => return panic!("Trying to create app from non client full id")
+        };
+        let mut app = TestApp::new_disconnected(&mut self.rng, owner_full_id);
         self.establish_connection(&mut app);
         app
     }
 
-    pub fn new_disconnected_app(&mut self, owner: ClientPublicId) -> TestApp {
-        TestApp::new_disconnected(&mut self.rng, owner)
+    pub fn new_disconnected_app(&mut self, owner: &FullId) -> TestApp {
+        let owner_full_id = match owner {
+            FullId::Client(id) => id,
+            _ => return panic!("Trying to create app from non client full id")
+        };
+        TestApp::new_disconnected(&mut self.rng, owner_full_id)
     }
 
     /// Establish connection assuming we are already at the destination section.
@@ -336,8 +344,8 @@ pub trait TestClientTrait {
     fn set_connected_vault(&mut self, connected_vault: NodeInfo);
     fn connected_vaults(&self) -> Vec<NodeInfo>;
 
-    fn token(&self) -> Option<AuthToken> {
-        None
+    fn token(&self) -> &Option<AuthToken> {
+        &None
     }
 
     fn sign<T: AsRef<[u8]>>(&self, data: T) -> Signature {
@@ -462,7 +470,7 @@ pub trait TestClientTrait {
             request,
             message_id,
             signature: Some(signature),
-            token: self.token(),
+            token: self.token().clone(),
         };
 
         self.send(&msg);
@@ -634,16 +642,36 @@ pub struct TestApp {
     full_id: FullId,
     public_id: AppPublicId,
     connected_vaults: Vec<NodeInfo>,
+    token: Option<AuthToken>
 }
 
+fn generate_token_w_caveat_for_random_app(client: &ClientFullId) -> AuthToken {
+    use rand::thread_rng;
+
+    // let id = FullId::App(AppFullId::new_bls(
+    //     &mut thread_rng(),
+    //     client.public_id().clone(),
+    // ));
+
+    let mut token = AuthToken::new().unwrap();
+
+    let safe_key = SafeKey::client(client.clone());
+    let caveat = ("expire".to_string(), "nowthen".to_string());
+
+    token.add_caveat(caveat, &safe_key).unwrap();
+
+    token
+}
+
+
 impl TestApp {
-    fn new_disconnected(rng: &mut TestRng, owner: ClientPublicId) -> Self {
+    fn new_disconnected(rng: &mut TestRng, owner: &ClientFullId) -> Self {
         let (tx, rx) = crossbeam_channel::unbounded();
         let config = quic_p2p::Config {
             our_type: OurType::Client,
             ..Default::default()
         };
-        let app_full_id = AppFullId::new_ed25519(rng, owner);
+        let app_full_id = AppFullId::new_ed25519(rng, owner.public_id().clone());
         let public_id = app_full_id.public_id().clone();
 
         Self {
@@ -652,6 +680,8 @@ impl TestApp {
             full_id: FullId::App(app_full_id),
             public_id,
             connected_vaults: Default::default(),
+            // TODO use full id here....
+            token : Some( generate_token_w_caveat_for_random_app(owner) )
         }
     }
 
@@ -659,9 +689,6 @@ impl TestApp {
         &self.public_id
     }
 
-    // pub fn token(&self) -> Option<AuthToken> {
-    //     &self.token
-    // }
 }
 
 impl TestClientTrait for TestApp {
@@ -683,6 +710,10 @@ impl TestClientTrait for TestApp {
 
     fn connected_vaults(&self) -> Vec<NodeInfo> {
         self.connected_vaults.clone()
+    }
+
+    fn token(&self) -> &Option<AuthToken> {
+        &self.token
     }
 }
 

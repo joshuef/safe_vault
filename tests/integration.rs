@@ -45,24 +45,8 @@ use unwrap::unwrap;
 fn client_connects() {
     let mut env = Environment::new();
     let client = env.new_connected_client();
-    let _app = env.new_connected_app(client.public_id().clone());
+    let _app = env.new_connected_app(client.full_id().clone());
 }
-
-// fn generate_token_w_caveat_for_random_app(client: ClientFullId) -> AuthToken {
-//     use rand::thread_rng;
-//
-//     let id = FullId::App(AppFullId::new_bls(
-//         &mut thread_rng(),
-//         client.public_id().clone(),
-//     ));
-//
-//     let mut token = AuthToken::new().unwrap();
-//     let caveat = ("expire".to_string(), "nowthen".to_string());
-//
-//     token.add_caveat(caveat, &id).unwrap();
-//
-//     token
-// }
 
 #[test]
 fn invalid_signature() {
@@ -487,7 +471,7 @@ fn coin_operations_by_app() {
 
     // Create an app with all permissions.
     // The `perform_mutations` permission is required to send a `CreateBalance` request.
-    let mut app = env.new_disconnected_app(client_a.public_id().clone());
+    let mut app = env.new_disconnected_app(client_a.full_id().clone());
     common::perform_mutation(
         &mut env,
         &mut client_a,
@@ -545,7 +529,7 @@ fn coin_operations_by_app_with_insufficient_permissions() {
     common::create_balance(&mut env, &mut owner, None, balance);
 
     // Create an app which does *not* have permission to transfer coins.
-    let mut app = env.new_disconnected_app(owner.public_id().clone());
+    let mut app = env.new_disconnected_app(owner.full_id().clone());
     common::perform_mutation(
         &mut env,
         &mut owner,
@@ -2254,7 +2238,7 @@ fn auth_keys() {
 
     let mut env = Environment::new();
     let mut owner = env.new_connected_client();
-    let mut app = env.new_connected_app(owner.public_id().clone());
+    let mut app = env.new_connected_app(owner.full_id().clone());
 
     // Create an app with some permissions to mutate and view the balance.
     let permissions = AppPermissions {
@@ -2348,7 +2332,7 @@ fn app_permissions() {
     common::create_balance(&mut env, &mut owner, None, balance);
 
     // App 0 is authorized with permission to perform mutations.
-    let mut app_0 = env.new_disconnected_app(owner.public_id().clone());
+    let mut app_0 = env.new_disconnected_app(owner.full_id().clone());
     common::perform_mutation(
         &mut env,
         &mut owner,
@@ -2365,7 +2349,7 @@ fn app_permissions() {
     env.establish_connection(&mut app_0);
 
     // App 1 is authorized, and can only read balance.
-    let mut app_1 = env.new_disconnected_app(owner.public_id().clone());
+    let mut app_1 = env.new_disconnected_app(owner.full_id().clone());
     common::perform_mutation(
         &mut env,
         &mut owner,
@@ -2382,10 +2366,10 @@ fn app_permissions() {
     env.establish_connection(&mut app_1);
 
     // App 2 is not authorized.
-    let mut app_2 = env.new_connected_app(owner.public_id().clone());
+    let mut app_2 = env.new_connected_app(owner.full_id().clone());
 
     // App 3 is authorized with permission to transfer coins only.
-    let mut app_3 = env.new_disconnected_app(owner.public_id().clone());
+    let mut app_3 = env.new_disconnected_app(owner.full_id().clone());
     common::perform_mutation(
         &mut env,
         &mut owner,

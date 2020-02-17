@@ -31,7 +31,7 @@ use safe_nd::{
     ConnectionInfo, Error as NdError, HandshakeRequest, HandshakeResponse, IData, IDataAddress,
     IDataKind, LoginPacket, MData, Message, MessageId, NodePublicId, Notification, PublicId,
     PublicKey, Request, Response, Result as NdResult, Signature, Transaction, TransactionId,
-    XorName,
+    XorName, GET_BALANCE, PERFORM_MUTATIONS, TRANSFER_COINS,
 };
 use serde::Serialize;
 use std::{
@@ -447,7 +447,9 @@ impl ClientHandler {
     /// Verifies token validity for a given PublicId
     fn is_valid_token_for_app(&self, client_id: &ClientPublicId, token: &AuthToken) -> bool {
         let public_id = &PublicId::Client(client_id.clone());
-        token.is_valid_for_public_key(&public_id.public_key()).is_ok()
+        token
+            .is_valid_for_public_key(&public_id.public_key())
+            .expect("Error validating token")
     }
 
     fn handle_get_mdata(
@@ -1700,37 +1702,6 @@ impl ClientHandler {
         }
     }
 
-    // TODO: Should we reply to message here?
-    /// Wrapper func to return result of token verification.
-    fn verify_token(
-        &mut self,
-        app_id: &AppPublicId,
-        message_id: MessageId,
-        token: &Option<AuthToken>,
-    ) -> Result<(), String> {
-        let valid = match token {
-            Some(auth_token) => self.is_valid_token_for_app(app_id.owner(), &auth_token),
-            None => {
-                warn!(
-                    "{}: (Message: {:?}) from {} has invalid token",
-                    self, message_id, app_id
-                );
-
-                return Err("No token provided".to_string());
-            }
-        };
-
-        if valid {
-            Ok(())
-        } else {
-            warn!(
-                "{}: (Message: {:?}) from {} has invalid token",
-                self, message_id, app_id
-            );
-            Err("Invalid token provided".to_string())
-        }
-    }
-
     // If the client is app, check if it is authorised to perform the given request.
     fn authorise_app(
         &mut self,
@@ -1744,31 +1715,30 @@ impl ClientHandler {
             _ => return Some(()),
         };
 
-        let result = match utils::authorisation_kind(request) {
+        let token_result = match utils::authorisation_kind(request) {
             AuthorisationKind::GetPub => Ok(()),
-            AuthorisationKind::GetUnpub => {
-                self.check_app_permissions(app_id, token, message_id, |_| true)
-            }
+            AuthorisationKind::GetUnpub => self.check_app_token(app_id, token, message_id, None),
             AuthorisationKind::GetBalance => {
-                self.check_app_permissions(app_id, token, message_id, |perms| perms.get_balance)
+                self.check_app_token(app_id, token, message_id, Some(GET_BALANCE.to_string()))
             }
-            AuthorisationKind::Mut => {
-                self.check_app_permissions(app_id, token, message_id, |perms| {
-                    perms.perform_mutations
-                })
-            }
+            AuthorisationKind::Mut => self.check_app_token(
+                app_id,
+                token,
+                message_id,
+                Some(PERFORM_MUTATIONS.to_string()),
+            ),
             AuthorisationKind::TransferCoins => {
-                self.check_app_permissions(app_id, token, message_id, |perms| perms.transfer_coins)
+                self.check_app_token(app_id, token, message_id, Some(TRANSFER_COINS.to_string()))
             }
             AuthorisationKind::MutAndTransferCoins => {
-                self.check_app_permissions(app_id, token, message_id, |perms| {
-                    perms.transfer_coins && perms.perform_mutations
-                })
+                self.check_app_token(app_id, token, message_id, None)
             }
-            AuthorisationKind::ManageAppKeys => Err(NdError::AccessDenied("Not the owner".to_string() ) ),
+            AuthorisationKind::ManageAppKeys => {
+                Err(NdError::AccessDenied("Not the owner".to_string()))
+            }
         };
 
-        if let Err(error) = result {
+        if let Err(error) = token_result {
             self.send_response_to_client(message_id, request.error_response(error));
             None
         } else {
@@ -1776,26 +1746,51 @@ impl ClientHandler {
         }
     }
 
-    fn check_app_permissions(
+    fn check_app_token(
         &mut self,
         app_id: &AppPublicId,
         token: Option<AuthToken>,
         message_id: MessageId,
-        check: impl FnOnce(AppPermissions) -> bool,
+        extra_caveat_to_check: Option<String>,
     ) -> Result<(), NdError> {
-        // TODO: Pass desired permission check into verify_token
-        //      remove the current permission checks...
-        self.verify_token(app_id, message_id, &token)?;
+        // simple func to check basic perms
+        fn caveat_truth_checker(contents: String) -> bool {
+            contents.as_str() == "true"
+        }
 
-        if self
-            .auth_keys
-            .app_permissions(app_id)
-            .map(check)
-            .unwrap_or(false)
-        {
-            Ok(())
-        } else {
-            Err(NdError::AccessDenied("Permission denied".to_string()) )
+        match token {
+            Some(auth_token) => {
+                // first validate the token.
+                let has_valid_sig = self.is_valid_token_for_app(app_id.owner(), &auth_token);
+
+                if !has_valid_sig {
+                    return Err(NdError::AccessDenied("Invalid token signature".to_string()));
+                }
+
+                // second... any general caveat checks...
+                match extra_caveat_to_check {
+                    // currently limited to only one check with this setup.
+                    // TODO make this more flexible
+                    Some(caveat) => {
+                        if !auth_token.verify_caveat(&caveat, caveat_truth_checker)? {
+                            return Err(NdError::AccessDenied(format!(
+                                "Invalid caveat {:?}",
+                                &caveat
+                            )));
+                        }
+
+                        Ok(())
+                    }
+                    None => Ok(()),
+                }
+            }
+            None => {
+                warn!(
+                    "{}: (Message: {:?}) from {} has no token.?",
+                    self, message_id, app_id
+                );
+                Err(NdError::AccessDenied("No token provided".to_string()))
+            }
         }
     }
 

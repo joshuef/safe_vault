@@ -27,6 +27,7 @@ use lazy_static::lazy_static;
 use log::{debug, error, info, trace, warn};
 use rand::{CryptoRng, Rng};
 use safe_nd::{
+    GET_BALANCE, PERFORM_MUTATIONS, TRANSFER_COINS,
     AData, ADataAddress, AppPermissions, AppPublicId, AuthToken, ClientPublicId, Coins,
     ConnectionInfo, Error as NdError, HandshakeRequest, HandshakeResponse, IData, IDataAddress,
     IDataKind, LoginPacket, MData, Message, MessageId, NodePublicId, Notification, PublicId,
@@ -1752,7 +1753,6 @@ impl ClientHandler {
                 self.check_app_permissions(app_id, message_id, |_| true)
             }
             AuthorisationKind::GetBalance => {
-                let balance_caveat = "balance".to_string();
                 self.check_app_permissions(app_id, message_id, |perms| perms.get_balance )
             }
             AuthorisationKind::Mut => {
@@ -1761,7 +1761,6 @@ impl ClientHandler {
                 })
             }
             AuthorisationKind::TransferCoins => {
-                let transfer_caveat = "transfer".to_string();
                 self.check_app_permissions(app_id, message_id, |perms| perms.transfer_coins )
             }
             AuthorisationKind::MutAndTransferCoins => {
@@ -1784,15 +1783,13 @@ impl ClientHandler {
                 self.check_app_token(app_id, token, message_id, None)
             }
             AuthorisationKind::GetBalance => {
-                let balance_caveat = "balance".to_string();
-                self.check_app_token(app_id, token, message_id, Some(balance_caveat) )
+                self.check_app_token(app_id, token, message_id, Some(GET_BALANCE.to_string()) )
             }
             AuthorisationKind::Mut => {
                 self.check_app_token(app_id, token, message_id, None)
             }
             AuthorisationKind::TransferCoins => {
-                let transfer_caveat = "transfer".to_string();
-                self.check_app_token(app_id, token, message_id, Some(transfer_caveat))
+                self.check_app_token(app_id, token, message_id, Some(TRANSFER_COINS.to_string()))
             }
             AuthorisationKind::MutAndTransferCoins => {
                 self.check_app_token(app_id, token, message_id, None)

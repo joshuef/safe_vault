@@ -1706,19 +1706,20 @@ impl ClientHandler {
         &mut self,
         app_id: &AppPublicId,
         message_id: MessageId,
-        token: &Option<AuthToken>,
+        token: AuthToken,
     ) -> Result<(), String> {
-        let valid = match token {
-            Some(auth_token) => self.is_valid_token_for_app(app_id.owner(), &auth_token),
-            None => {
-                warn!(
-                    "{}: (Message: {:?}) from {} has invalid token",
-                    self, message_id, app_id
-                );
-
-                return Err("No token provided".to_string());
-            }
-        };
+        let valid = self.is_valid_token_for_app(app_id.owner(), &token);
+        // let valid = match token {
+        //     Some(auth_token) =>
+        //     None => {
+        //         warn!(
+        //             "{}: (Message: {:?}) from {} has invalid token",
+        //             self, message_id, app_id
+        //         );
+        //
+        //         return Err("No token provided".to_string());
+        //     }
+        // };
 
         if valid {
             Ok(())
@@ -1785,7 +1786,19 @@ impl ClientHandler {
     ) -> Result<(), NdError> {
         // TODO: Pass desired permission check into verify_token
         //      remove the current permission checks...
-        self.verify_token(app_id, message_id, &token)?;
+        let valid = match token {
+            Some(auth_token) => self.verify_token(app_id, message_id, auth_token)?,
+            None => {
+                // None doesn't mean error... this could be a client request. How to tell here if
+                // None would be correct?
+                warn!(
+                    "{}: (Message: {:?}) from {} has no token... has this come from a client?",
+                    self, message_id, app_id
+                );
+            }
+        };
+
+        // self.verify_token(app_id, message_id, &token)?;
 
         if self
             .auth_keys

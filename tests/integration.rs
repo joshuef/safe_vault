@@ -1717,7 +1717,7 @@ fn append_only_data_put_owners() {
             owner: owner_1,
             owners_index: 1,
         },
-        NdError::AccessDenied("Permission denied".to_string()),
+        NdError::AccessDenied("No publish permission defined".to_string()),
     );
     common::perform_mutation(
         &mut env,
@@ -2464,7 +2464,7 @@ fn app_permissions() {
         &mut env,
         &mut app_2,
         Request::GetAData(unpub_data_address),
-        NdError::AccessDenied("Not the owner".to_string()),
+        NdError::AccessDenied("Permission denied".to_string()),
     );
 
     // Only the app with the transfer coins permission can perform mutable request.
@@ -2488,13 +2488,13 @@ fn app_permissions() {
             &mut env,
             &mut app_1,
             Request::AppendUnseq(append.clone()),
-            NdError::AccessDenied("Not the owner".to_string()),
+            NdError::AccessDenied("Permission denied".to_string()),
         );
         common::send_request_expect_err(
             &mut env,
             &mut app_2,
             Request::AppendUnseq(append),
-            NdError::AccessDenied("Not the owner".to_string()),
+            NdError::AccessDenied("Permission denied".to_string()),
         );
     }
 

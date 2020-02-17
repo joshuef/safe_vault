@@ -48,21 +48,21 @@ fn client_connects() {
     let _app = env.new_connected_app(client.public_id().clone());
 }
 
-fn generate_token_w_caveat_for_random_app(client: ClientFullId) -> AuthToken {
-    use rand::thread_rng;
-
-    let id = FullId::App(AppFullId::new_bls(
-        &mut thread_rng(),
-        client.public_id().clone(),
-    ));
-
-    let mut token = AuthToken::new().unwrap();
-    let caveat = ("expire".to_string(), "nowthen".to_string());
-
-    token.add_caveat(caveat, &id).unwrap();
-
-    token
-}
+// fn generate_token_w_caveat_for_random_app(client: ClientFullId) -> AuthToken {
+//     use rand::thread_rng;
+//
+//     let id = FullId::App(AppFullId::new_bls(
+//         &mut thread_rng(),
+//         client.public_id().clone(),
+//     ));
+//
+//     let mut token = AuthToken::new().unwrap();
+//     let caveat = ("expire".to_string(), "nowthen".to_string());
+//
+//     token.add_caveat(caveat, &id).unwrap();
+//
+//     token
+// }
 
 #[test]
 fn invalid_signature() {
@@ -176,7 +176,7 @@ fn login_packets() {
             &mut env,
             &mut client,
             Request::GetLoginPacket(login_packet_locator),
-            NdError::AccessDenied("Permission denied".to_string()),
+            NdError::AccessDenied("Not the owner".to_string()),
         );
     }
 }
@@ -285,7 +285,7 @@ fn create_login_packet_for_other() {
         &mut env,
         &mut established_client,
         Request::GetLoginPacket(login_packet_locator),
-        NdError::AccessDenied("Permission denied".to_string()),
+        NdError::AccessDenied("Not the owner".to_string()),
     );
 }
 
@@ -344,7 +344,7 @@ fn update_login_packet() {
             &mut env,
             &mut client,
             Request::UpdateLoginPacket(login_packet),
-            NdError::AccessDenied("Permission denied".to_string()),
+            NdError::AccessDenied("Not the owner".to_string()),
         );
     }
 }
@@ -796,13 +796,13 @@ fn put_append_only_data() {
         &mut env,
         &mut client_b,
         Request::DeleteAData(*unpub_seq_adata.address()),
-        NdError::AccessDenied("Permission denied".to_string()),
+        NdError::AccessDenied("Not the owner".to_string()),
     );
     common::send_request_expect_err(
         &mut env,
         &mut client_b,
         Request::DeleteAData(*unpub_unseq_adata.address()),
-        NdError::AccessDenied("Permission denied".to_string()),
+        NdError::AccessDenied("Not the owner".to_string()),
     );
 
     // Delete the data
@@ -1494,7 +1494,7 @@ fn pub_append_only_data_put_permissions() {
             permissions: perms_1.clone(),
             permissions_index: 1,
         },
-        NdError::AccessDenied("Permission denied".to_string()),
+        NdError::AccessDenied("No publish permission defined".to_string()),
     );
 
     common::perform_mutation(
@@ -2072,7 +2072,7 @@ fn get_immutable_data_from_other_owner() {
         Request::PutIData(unpub_idata.clone()),
     );
     common::send_request_expect_ok(&mut env, &mut client_a, request.clone(), unpub_idata);
-    common::send_request_expect_err(&mut env, &mut client_b, request, NdError::AccessDenied("Permission denied".to_string()));
+    common::send_request_expect_err(&mut env, &mut client_b, request, NdError::AccessDenied("Not the owner".to_string()));
 }
 
 #[test]
@@ -2216,7 +2216,7 @@ fn delete_immutable_data() {
         &mut env,
         &mut client_b,
         Request::DeleteUnpubIData(IDataAddress::Unpub(unpub_idata_address)),
-        NdError::AccessDenied("Permission denied".to_string()),
+        NdError::AccessDenied("Not the owner".to_string()),
     );
 
     // Delete unpublished data without having the balance
@@ -2303,13 +2303,13 @@ fn auth_keys() {
         &mut env,
         &mut app,
         Request::ListAuthKeysAndVersion,
-        NdError::AccessDenied("Permission denied".to_string()),
+        NdError::AccessDenied("Not the owner".to_string()),
     );
     common::send_request_expect_err(
         &mut env,
         &mut app,
         make_ins_request(2),
-        NdError::AccessDenied("Permission denied".to_string()),
+        NdError::AccessDenied("Not the owner".to_string()),
     );
     let del_auth_key_request = Request::DelAuthKey {
         key: *app.public_id().public_key(),
@@ -2319,7 +2319,7 @@ fn auth_keys() {
         &mut env,
         &mut app,
         del_auth_key_request.clone(),
-        NdError::AccessDenied("Permission denied".to_string()),
+        NdError::AccessDenied("Not the owner".to_string()),
     );
 
     // Remove the app, then list the keys.
@@ -2464,7 +2464,7 @@ fn app_permissions() {
         &mut env,
         &mut app_2,
         Request::GetAData(unpub_data_address),
-        NdError::AccessDenied("Permission denied".to_string()),
+        NdError::AccessDenied("Not the owner".to_string()),
     );
 
     // Only the app with the transfer coins permission can perform mutable request.
@@ -2488,13 +2488,13 @@ fn app_permissions() {
             &mut env,
             &mut app_1,
             Request::AppendUnseq(append.clone()),
-            NdError::AccessDenied("Permission denied".to_string()),
+            NdError::AccessDenied("Not the owner".to_string()),
         );
         common::send_request_expect_err(
             &mut env,
             &mut app_2,
             Request::AppendUnseq(append),
-            NdError::AccessDenied("Permission denied".to_string()),
+            NdError::AccessDenied("Not the owner".to_string()),
         );
     }
 
@@ -2910,7 +2910,7 @@ fn mutable_data_permissions() {
             address,
             actions: actions.into(),
         },
-        NdError::AccessDenied("Permission denied".to_string()),
+        NdError::AccessDenied("Not the owner".to_string()),
     );
 
     // Insert permissions for client B.
@@ -2956,7 +2956,7 @@ fn mutable_data_permissions() {
             address,
             actions: actions.into(),
         },
-        NdError::AccessDenied("Permission denied".to_string()),
+        NdError::AccessDenied("Not the owner".to_string()),
     );
 }
 
@@ -2996,7 +2996,7 @@ fn delete_mutable_data() {
         &mut env,
         &mut client_b,
         Request::DeleteMData(address),
-        NdError::AccessDenied("Permission denied".to_string()),
+        NdError::AccessDenied("Not the owner".to_string()),
     );
     common::send_request_expect_ok(&mut env, &mut client_a, Request::GetBalance, balance_a);
 

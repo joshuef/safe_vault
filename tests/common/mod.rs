@@ -336,6 +336,10 @@ pub trait TestClientTrait {
     fn set_connected_vault(&mut self, connected_vault: NodeInfo);
     fn connected_vaults(&self) -> Vec<NodeInfo>;
 
+    fn token(&self) -> Option<AuthToken> {
+        None
+    }
+
     fn sign<T: AsRef<[u8]>>(&self, data: T) -> Signature {
         self.full_id().sign(data)
     }
@@ -446,19 +450,19 @@ pub trait TestClientTrait {
         let to_sign = unwrap!(bincode::serialize(&to_sign));
         let signature = self.full_id().sign(&to_sign);
 
-        // TODO: here we create + sign a token w/ our full ID. To be verified against
-        // auth held app PublicId
-        let mut app_auth_token = AuthToken::new().unwrap();
-
-        // Add some caveat for now to generate sig
-        let caveat = ("expire".to_string(), "nowthen".to_string());
-        app_auth_token.add_caveat(caveat, self.full_id()).unwrap();
+        // // TODO: here we create + sign a token w/ our full ID. To be verified against
+        // // auth held app PublicId
+        // let mut app_auth_token = AuthToken::new().unwrap();
+        //
+        // // Add some caveat for now to generate sig
+        // let caveat = ("expire".to_string(), "nowthen".to_string());
+        // app_auth_token.add_caveat(caveat, self.full_id()).unwrap();
 
         let msg = Message::Request {
             request,
             message_id,
             signature: Some(signature),
-            token: Some(app_auth_token),
+            token: self.token(),
         };
 
         self.send(&msg);
@@ -654,6 +658,10 @@ impl TestApp {
     pub fn public_id(&self) -> &AppPublicId {
         &self.public_id
     }
+
+    // pub fn token(&self) -> Option<AuthToken> {
+    //     &self.token
+    // }
 }
 
 impl TestClientTrait for TestApp {

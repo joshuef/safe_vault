@@ -9,9 +9,7 @@
 use crate::{utils, vault::Init, Result, ToDbKey};
 use log::{trace, warn};
 use pickledb::PickleDb;
-use safe_nd::{
-    AppPermissions, AppPublicId, ClientPublicId, Error as NdError, PublicKey, Result as NdResult,
-};
+use safe_nd::{AppPermissions, ClientPublicId, Error as NdError, PublicKey, Result as NdResult};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashMap},
@@ -43,12 +41,6 @@ impl AuthKeysDb {
         Ok(Self {
             db: utils::new_db(root_dir, AUTH_KEYS_DB_NAME, init_mode)?,
         })
-    }
-
-    pub fn app_permissions(&self, app_public_id: &AppPublicId) -> Option<AppPermissions> {
-        self.db
-            .get(&app_public_id.owner().to_db_key())
-            .and_then(|auth_keys: AuthKeys| auth_keys.apps.get(app_public_id.public_key()).cloned())
     }
 
     /// If the specified auth_key doesn't exist, a default `AuthKeysAsTuple` is returned.

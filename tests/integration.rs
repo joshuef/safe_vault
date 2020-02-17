@@ -29,8 +29,8 @@ use rand::{distributions::Standard, Rng};
 use safe_nd::{
     AData, ADataAddress, ADataAppendOperation, ADataEntry, ADataIndex, ADataOwner,
     ADataPermissions, ADataPubPermissionSet, ADataPubPermissions, ADataUnpubPermissionSet,
-    ADataUnpubPermissions, ADataUser, AppFullId, AppPermissions, AppendOnlyData, AuthToken,
-    ClientFullId, Coins, EntryError, Error as NdError, FullId, IData, IDataAddress, LoginPacket,
+    ADataUnpubPermissions, ADataUser, AppPermissions, AppendOnlyData,
+    ClientFullId, Coins, EntryError, Error as NdError, IData, IDataAddress, LoginPacket,
     MData, MDataAction, MDataAddress, MDataEntries, MDataKind, MDataPermissionSet,
     MDataSeqEntryActions, MDataSeqValue, MDataUnseqEntryActions, MDataValue, MDataValues, Message,
     MessageId, PubImmutableData, PubSeqAppendOnlyData, PubUnseqAppendOnlyData, PublicKey, Request,
@@ -45,23 +45,7 @@ use unwrap::unwrap;
 fn client_connects() {
     let mut env = Environment::new();
     let client = env.new_connected_client();
-    let _app = env.new_connected_app(client.public_id().clone());
-}
-
-fn generate_token_w_caveat_for_random_app(client: ClientFullId) -> AuthToken {
-    use rand::thread_rng;
-
-    let id = FullId::App(AppFullId::new_bls(
-        &mut thread_rng(),
-        client.public_id().clone(),
-    ));
-
-    let mut token = AuthToken::new().unwrap();
-    let caveat = ("expire".to_string(), "nowthen".to_string());
-
-    token.add_caveat(caveat, &id).unwrap();
-
-    token
+    let _app = env.new_connected_app(client.full_id(), None);
 }
 
 #[test]
@@ -176,7 +160,7 @@ fn login_packets() {
             &mut env,
             &mut client,
             Request::GetLoginPacket(login_packet_locator),
-            NdError::AccessDenied("Permission denied".to_string()),
+            NdError::AccessDenied("Not the owner".to_string()),
         );
     }
 }
@@ -285,7 +269,7 @@ fn create_login_packet_for_other() {
         &mut env,
         &mut established_client,
         Request::GetLoginPacket(login_packet_locator),
-        NdError::AccessDenied("Permission denied".to_string()),
+        NdError::AccessDenied("Not the owner".to_string()),
     );
 }
 
@@ -344,7 +328,7 @@ fn update_login_packet() {
             &mut env,
             &mut client,
             Request::UpdateLoginPacket(login_packet),
-            NdError::AccessDenied("Permission denied".to_string()),
+            NdError::AccessDenied("Not the owner".to_string()),
         );
     }
 }
@@ -485,9 +469,14 @@ fn coin_operations_by_app() {
     // Create initial balance.
     common::create_balance(&mut env, &mut client_a, None, 10);
 
+    let permissions = AppPermissions {
+        transfer_coins: true,
+        get_balance: true,
+        perform_mutations: true,
+    };
     // Create an app with all permissions.
     // The `perform_mutations` permission is required to send a `CreateBalance` request.
-    let mut app = env.new_disconnected_app(client_a.public_id().clone());
+    let mut app = env.new_disconnected_app(client_a.full_id(), Some(permissions));
     common::perform_mutation(
         &mut env,
         &mut client_a,
@@ -495,11 +484,7 @@ fn coin_operations_by_app() {
             key: *app.public_id().public_key(),
             version: 1,
             // TODO: move perms to token
-            permissions: AppPermissions {
-                transfer_coins: true,
-                get_balance: true,
-                perform_mutations: true,
-            },
+            permissions,
         },
     );
     env.establish_connection(&mut app);
@@ -533,6 +518,14 @@ fn coin_operations_by_app() {
         Request::GetBalance,
         unwrap!(Coins::from_nano(1)),
     );
+
+    // check this fails w/o token
+    common::send_request_expect_err_no_token(
+        &mut env,
+        &mut app,
+        Request::GetBalance,
+        NdError::AccessDenied("No token provided".to_string()),
+    );
 }
 
 #[test]
@@ -544,19 +537,21 @@ fn coin_operations_by_app_with_insufficient_permissions() {
     let balance = unwrap!(Coins::from_nano(10));
     common::create_balance(&mut env, &mut owner, None, balance);
 
+    let permissions = AppPermissions {
+        transfer_coins: false,
+        get_balance: false,
+        perform_mutations: false,
+    };
+
     // Create an app which does *not* have permission to transfer coins.
-    let mut app = env.new_disconnected_app(owner.public_id().clone());
+    let mut app = env.new_disconnected_app(owner.full_id(), Some(permissions));
     common::perform_mutation(
         &mut env,
         &mut owner,
         Request::InsAuthKey {
             key: *app.public_id().public_key(),
             version: 1,
-            permissions: AppPermissions {
-                get_balance: false,
-                transfer_coins: false,
-                perform_mutations: false,
-            },
+            permissions,
         },
     );
     env.establish_connection(&mut app);
@@ -566,7 +561,14 @@ fn coin_operations_by_app_with_insufficient_permissions() {
         &mut env,
         &mut app,
         Request::GetBalance,
-        NdError::AccessDenied("Permission denied".to_string()),
+        NdError::AccessDenied("Invalid caveat \"get_balance\"".to_string()),
+    );
+
+    common::send_request_expect_err_no_token(
+        &mut env,
+        &mut app,
+        Request::GetBalance,
+        NdError::AccessDenied("No token provided".to_string()),
     );
 
     // The attempt to transfer some coins by the app fails.
@@ -580,7 +582,7 @@ fn coin_operations_by_app_with_insufficient_permissions() {
             amount: unwrap!(Coins::from_nano(1)),
             transaction_id,
         },
-        NdError::AccessDenied("Permission denied".to_string()),
+        NdError::AccessDenied("Invalid caveat \"transfer_coins\"".to_string()),
     );
 
     // The owners balance is unchanged.
@@ -796,13 +798,13 @@ fn put_append_only_data() {
         &mut env,
         &mut client_b,
         Request::DeleteAData(*unpub_seq_adata.address()),
-        NdError::AccessDenied("Permission denied".to_string()),
+        NdError::AccessDenied("Not the owner".to_string()),
     );
     common::send_request_expect_err(
         &mut env,
         &mut client_b,
         Request::DeleteAData(*unpub_unseq_adata.address()),
-        NdError::AccessDenied("Permission denied".to_string()),
+        NdError::AccessDenied("Not the owner".to_string()),
     );
 
     // Delete the data
@@ -1494,7 +1496,7 @@ fn pub_append_only_data_put_permissions() {
             permissions: perms_1.clone(),
             permissions_index: 1,
         },
-        NdError::AccessDenied("Permission denied".to_string()),
+        NdError::AccessDenied("No publish permission defined".to_string()),
     );
 
     common::perform_mutation(
@@ -1717,7 +1719,7 @@ fn append_only_data_put_owners() {
             owner: owner_1,
             owners_index: 1,
         },
-        NdError::AccessDenied("Permission denied".to_string()),
+        NdError::AccessDenied("No publish permission defined".to_string()),
     );
     common::perform_mutation(
         &mut env,
@@ -2072,7 +2074,12 @@ fn get_immutable_data_from_other_owner() {
         Request::PutIData(unpub_idata.clone()),
     );
     common::send_request_expect_ok(&mut env, &mut client_a, request.clone(), unpub_idata);
-    common::send_request_expect_err(&mut env, &mut client_b, request, NdError::AccessDenied("Permission denied".to_string()));
+    common::send_request_expect_err(
+        &mut env,
+        &mut client_b,
+        request,
+        NdError::AccessDenied("Not the owner".to_string()),
+    );
 }
 
 #[test]
@@ -2216,7 +2223,7 @@ fn delete_immutable_data() {
         &mut env,
         &mut client_b,
         Request::DeleteUnpubIData(IDataAddress::Unpub(unpub_idata_address)),
-        NdError::AccessDenied("Permission denied".to_string()),
+        NdError::AccessDenied("Not the owner".to_string()),
     );
 
     // Delete unpublished data without having the balance
@@ -2254,7 +2261,6 @@ fn auth_keys() {
 
     let mut env = Environment::new();
     let mut owner = env.new_connected_client();
-    let mut app = env.new_connected_app(owner.public_id().clone());
 
     // Create an app with some permissions to mutate and view the balance.
     let permissions = AppPermissions {
@@ -2262,6 +2268,7 @@ fn auth_keys() {
         perform_mutations: true,
         get_balance: true,
     };
+    let mut app = env.new_connected_app(owner.full_id(), Some(permissions));
     let app_public_key = *app.public_id().public_key();
     let make_ins_request = |version| Request::InsAuthKey {
         key: app_public_key,
@@ -2303,13 +2310,13 @@ fn auth_keys() {
         &mut env,
         &mut app,
         Request::ListAuthKeysAndVersion,
-        NdError::AccessDenied("Permission denied".to_string()),
+        NdError::AccessDenied("Not the owner".to_string()),
     );
     common::send_request_expect_err(
         &mut env,
         &mut app,
         make_ins_request(2),
-        NdError::AccessDenied("Permission denied".to_string()),
+        NdError::AccessDenied("Not the owner".to_string()),
     );
     let del_auth_key_request = Request::DelAuthKey {
         key: *app.public_id().public_key(),
@@ -2319,7 +2326,7 @@ fn auth_keys() {
         &mut env,
         &mut app,
         del_auth_key_request.clone(),
-        NdError::AccessDenied("Permission denied".to_string()),
+        NdError::AccessDenied("Not the owner".to_string()),
     );
 
     // Remove the app, then list the keys.
@@ -2347,56 +2354,59 @@ fn app_permissions() {
     let balance = unwrap!(Coins::from_nano(1000));
     common::create_balance(&mut env, &mut owner, None, balance);
 
+    let permissions = AppPermissions {
+        transfer_coins: false,
+        get_balance: false,
+        perform_mutations: true,
+    };
     // App 0 is authorized with permission to perform mutations.
-    let mut app_0 = env.new_disconnected_app(owner.public_id().clone());
+    let mut app_0 = env.new_disconnected_app(owner.full_id(), Some(permissions));
     common::perform_mutation(
         &mut env,
         &mut owner,
         Request::InsAuthKey {
             key: *app_0.public_id().public_key(),
             version: 1,
-            permissions: AppPermissions {
-                perform_mutations: true,
-                get_balance: false,
-                transfer_coins: false,
-            },
+            permissions,
         },
     );
     env.establish_connection(&mut app_0);
 
+    let permissions_app_1 = AppPermissions {
+        transfer_coins: false,
+        get_balance: true,
+        perform_mutations: false,
+    };
     // App 1 is authorized, and can only read balance.
-    let mut app_1 = env.new_disconnected_app(owner.public_id().clone());
+    let mut app_1 = env.new_disconnected_app(owner.full_id(), Some(permissions_app_1));
     common::perform_mutation(
         &mut env,
         &mut owner,
         Request::InsAuthKey {
             key: *app_1.public_id().public_key(),
             version: 2,
-            permissions: AppPermissions {
-                transfer_coins: false,
-                get_balance: true,
-                perform_mutations: false,
-            },
+            permissions: permissions_app_1,
         },
     );
     env.establish_connection(&mut app_1);
 
     // App 2 is not authorized.
-    let mut app_2 = env.new_connected_app(owner.public_id().clone());
+    let mut app_2 = env.new_connected_app(owner.full_id(), None);
 
+    let permissions_app_3 = AppPermissions {
+        transfer_coins: true,
+        get_balance: false,
+        perform_mutations: false,
+    };
     // App 3 is authorized with permission to transfer coins only.
-    let mut app_3 = env.new_disconnected_app(owner.public_id().clone());
+    let mut app_3 = env.new_disconnected_app(owner.full_id(), Some(permissions_app_3));
     common::perform_mutation(
         &mut env,
         &mut owner,
         Request::InsAuthKey {
             key: *app_3.public_id().public_key(),
             version: 3,
-            permissions: AppPermissions {
-                perform_mutations: false,
-                get_balance: false,
-                transfer_coins: true,
-            },
+            permissions: permissions_app_3,
         },
     );
     env.establish_connection(&mut app_3);
@@ -2464,10 +2474,10 @@ fn app_permissions() {
         &mut env,
         &mut app_2,
         Request::GetAData(unpub_data_address),
-        NdError::AccessDenied("Permission denied".to_string()),
+        NdError::AccessDenied("Invalid token signature".to_string()),
     );
 
-    // Only the app with the transfer coins permission can perform mutable request.
+    // Only the app with the transfer coins permission (app3) can perform mutable request.
     for address in [pub_data_address, unpub_data_address].iter().cloned() {
         let append = ADataAppendOperation {
             address,
@@ -2484,17 +2494,25 @@ fn app_permissions() {
             (),
         );
 
+        // check no token fails
+        common::send_request_expect_err_no_token(
+            &mut env,
+            &mut app_0,
+            Request::AppendUnseq(append.clone()),
+            NdError::AccessDenied("No token provided".to_string()),
+        );
+
         common::send_request_expect_err(
             &mut env,
             &mut app_1,
             Request::AppendUnseq(append.clone()),
-            NdError::AccessDenied("Permission denied".to_string()),
+            NdError::AccessDenied("Invalid caveat \"perform_mutations\"".to_string()),
         );
         common::send_request_expect_err(
             &mut env,
             &mut app_2,
             Request::AppendUnseq(append),
-            NdError::AccessDenied("Permission denied".to_string()),
+            NdError::AccessDenied("Invalid token signature".to_string()),
         );
     }
 
@@ -2511,7 +2529,7 @@ fn app_permissions() {
             amount: unwrap!(Coins::from_nano(50)),
             transaction_id: 0,
         },
-        NdError::AccessDenied("Permission denied".to_string()),
+        NdError::AccessDenied("Invalid caveat \"transfer_coins\"".to_string()),
     );
 
     // App1 can read balance
@@ -2520,6 +2538,14 @@ fn app_permissions() {
         &mut app_1,
         Request::GetBalance,
         Response::GetBalance(Ok(unwrap!(Coins::from_nano(996)))),
+    );
+
+    // but only when it has a token
+    common::send_request_expect_err_no_token(
+        &mut env,
+        &mut app_0,
+        Request::GetBalance,
+        NdError::AccessDenied("No token provided".to_string()),
     );
 
     let amount = unwrap!(Coins::from_nano(900));
@@ -2540,12 +2566,24 @@ fn app_permissions() {
         expected,
     );
 
+    // but only when it has a token
+    common::send_request_expect_err_no_token(
+        &mut env,
+        &mut app_3,
+        Request::TransferCoins {
+            destination: *creditor.public_id().name(),
+            amount,
+            transaction_id: 1,
+        },
+        NdError::AccessDenied("No token provided".to_string()),
+    );
+
     // App 3 cannot mutate on behalf of the user
     common::send_request_expect_err(
         &mut env,
         &mut app_3,
         Request::PutMData(MData::from(data)),
-        NdError::AccessDenied("Permission denied".to_string()),
+        NdError::AccessDenied("Invalid caveat \"perform_mutations\"".to_string()),
     );
 
     // App 3 cannot read balance of the user
@@ -2553,7 +2591,7 @@ fn app_permissions() {
         &mut env,
         &mut app_3,
         Request::GetBalance,
-        NdError::AccessDenied("Permission denied".to_string()),
+        NdError::AccessDenied("Invalid caveat \"get_balance\"".to_string()),
     )
 }
 
@@ -2910,7 +2948,7 @@ fn mutable_data_permissions() {
             address,
             actions: actions.into(),
         },
-        NdError::AccessDenied("Permission denied".to_string()),
+        NdError::AccessDenied("Not the owner".to_string()),
     );
 
     // Insert permissions for client B.
@@ -2956,7 +2994,7 @@ fn mutable_data_permissions() {
             address,
             actions: actions.into(),
         },
-        NdError::AccessDenied("Permission denied".to_string()),
+        NdError::AccessDenied("Not the owner".to_string()),
     );
 }
 
@@ -2996,7 +3034,7 @@ fn delete_mutable_data() {
         &mut env,
         &mut client_b,
         Request::DeleteMData(address),
-        NdError::AccessDenied("Permission denied".to_string()),
+        NdError::AccessDenied("Not the owner".to_string()),
     );
     common::send_request_expect_ok(&mut env, &mut client_a, Request::GetBalance, balance_a);
 

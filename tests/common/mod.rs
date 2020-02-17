@@ -23,9 +23,10 @@ use mock_quic_p2p::{self as quic_p2p, Builder, Event, Network, NodeInfo, OurType
 #[cfg(feature = "mock_parsec")]
 use routing::{self, NetworkConfig, Node};
 use safe_nd::{
-    AppFullId, AppPublicId, AuthToken, ClientFullId, ClientPublicId, Coins, Error, FullId,
-    HandshakeRequest, HandshakeResponse, Message, MessageId, Notification, PublicId, PublicKey,
-    Request, Response, Signature, Transaction, TransactionId,
+    AppFullId, AppPermissions, AppPublicId, AuthToken, ClientFullId, ClientPublicId, Coins, Error,
+    FullId, HandshakeRequest, HandshakeResponse, Message, MessageId, Notification, PublicId,
+    PublicKey, Request, Response, SafeKey, Signature, Transaction, TransactionId, GET_BALANCE,
+    PERFORM_MUTATIONS, TRANSFER_COINS,
 };
 #[cfg(feature = "mock")]
 use safe_vault::{
@@ -177,14 +178,26 @@ impl Environment {
         client
     }
 
-    pub fn new_connected_app(&mut self, owner: ClientPublicId) -> TestApp {
-        let mut app = TestApp::new_disconnected(&mut self.rng, owner);
+    pub fn new_connected_app(&mut self, owner: &FullId, perms: Option<AppPermissions>) -> TestApp {
+        let owner_full_id = match owner {
+            FullId::Client(id) => id,
+            _ => panic!("Trying to create app from non client full id"),
+        };
+        let mut app = TestApp::new_disconnected(&mut self.rng, owner_full_id, perms);
         self.establish_connection(&mut app);
         app
     }
 
-    pub fn new_disconnected_app(&mut self, owner: ClientPublicId) -> TestApp {
-        TestApp::new_disconnected(&mut self.rng, owner)
+    pub fn new_disconnected_app(
+        &mut self,
+        owner: &FullId,
+        perms: Option<AppPermissions>,
+    ) -> TestApp {
+        let owner_full_id = match owner {
+            FullId::Client(id) => id,
+            _ => panic!("Trying to create app from non client full id"),
+        };
+        TestApp::new_disconnected(&mut self.rng, owner_full_id, perms)
     }
 
     /// Establish connection assuming we are already at the destination section.
@@ -336,6 +349,10 @@ pub trait TestClientTrait {
     fn set_connected_vault(&mut self, connected_vault: NodeInfo);
     fn connected_vaults(&self) -> Vec<NodeInfo>;
 
+    fn token(&self) -> &Option<AuthToken> {
+        &None
+    }
+
     fn sign<T: AsRef<[u8]>>(&self, data: T) -> Signature {
         self.full_id().sign(data)
     }
@@ -446,19 +463,30 @@ pub trait TestClientTrait {
         let to_sign = unwrap!(bincode::serialize(&to_sign));
         let signature = self.full_id().sign(&to_sign);
 
-        // TODO: here we create + sign a token w/ our full ID. To be verified against
-        // auth held app PublicId
-        let mut app_auth_token = AuthToken::new().unwrap();
+        let msg = Message::Request {
+            request,
+            message_id,
+            signature: Some(signature),
+            token: self.token().clone(),
+        };
 
-        // Add some caveat for now to generate sig
-        let caveat = ("expire".to_string(), "nowthen".to_string());
-        app_auth_token.add_caveat(caveat, self.full_id()).unwrap();
+        self.send(&msg);
+
+        message_id
+    }
+
+    fn send_request_no_token(&mut self, request: Request) -> MessageId {
+        let message_id = MessageId::new();
+
+        let to_sign = (&request, &message_id);
+        let to_sign = unwrap!(bincode::serialize(&to_sign));
+        let signature = self.full_id().sign(&to_sign);
 
         let msg = Message::Request {
             request,
             message_id,
             signature: Some(signature),
-            token: Some(app_auth_token),
+            token: None,
         };
 
         self.send(&msg);
@@ -630,16 +658,58 @@ pub struct TestApp {
     full_id: FullId,
     public_id: AppPublicId,
     connected_vaults: Vec<NodeInfo>,
+    token: Option<AuthToken>,
+}
+
+fn generate_token_w_caveat_for_app(
+    client: &ClientFullId,
+    perms: Option<AppPermissions>,
+) -> AuthToken {
+    let mut token = AuthToken::new().unwrap();
+
+    if let Some(app_permissions) = perms {
+            let transfer_coins_caveat = (
+                TRANSFER_COINS.to_string(),
+                format!("{}", app_permissions.transfer_coins),
+            );
+            let mutate_caveat = (
+                PERFORM_MUTATIONS.to_string(),
+                format!("{}", app_permissions.perform_mutations),
+            );
+            let balance_caveat = (
+                GET_BALANCE.to_string(),
+                format!("{}", app_permissions.get_balance),
+            );
+            let app_safe_key = SafeKey::client(client.clone());
+
+            token
+                .add_caveat(transfer_coins_caveat, &app_safe_key)
+                .expect("Failed to add transfer caveat to token.");
+            token
+                .add_caveat(mutate_caveat, &app_safe_key)
+                .expect("Failed to add mutate caveat to token.");
+            token
+                .add_caveat(balance_caveat, &app_safe_key)
+                .expect("Failed to add get_balance caveat to token.");
+        }
+        // None => {}
+    // };
+
+    token
 }
 
 impl TestApp {
-    fn new_disconnected(rng: &mut TestRng, owner: ClientPublicId) -> Self {
+    fn new_disconnected(
+        rng: &mut TestRng,
+        owner: &ClientFullId,
+        perms: Option<AppPermissions>,
+    ) -> Self {
         let (tx, rx) = crossbeam_channel::unbounded();
         let config = quic_p2p::Config {
             our_type: OurType::Client,
             ..Default::default()
         };
-        let app_full_id = AppFullId::new_ed25519(rng, owner);
+        let app_full_id = AppFullId::new_ed25519(rng, owner.public_id().clone());
         let public_id = app_full_id.public_id().clone();
 
         Self {
@@ -648,6 +718,7 @@ impl TestApp {
             full_id: FullId::App(app_full_id),
             public_id,
             connected_vaults: Default::default(),
+            token: Some(generate_token_w_caveat_for_app(owner, perms)),
         }
     }
 
@@ -675,6 +746,10 @@ impl TestClientTrait for TestApp {
 
     fn connected_vaults(&self) -> Vec<NodeInfo> {
         self.connected_vaults.clone()
+    }
+
+    fn token(&self) -> &Option<AuthToken> {
+        &self.token
     }
 }
 
@@ -735,6 +810,23 @@ pub fn send_request_expect_err<T: TestClientTrait>(
     let message_id = client.send_request(request.clone());
     trace!(
         "client sent request {:?} with msg_id {:?}",
+        request,
+        message_id
+    );
+    env.poll();
+    assert_eq!(expected_response, client.expect_response(message_id, env));
+}
+
+pub fn send_request_expect_err_no_token<T: TestClientTrait>(
+    env: &mut Environment,
+    client: &mut T,
+    request: Request,
+    expected_error: Error,
+) {
+    let expected_response = request.error_response(expected_error);
+    let message_id = client.send_request_no_token(request.clone());
+    trace!(
+        "client sent request {:?} with msg_id {:?} without token",
         request,
         message_id
     );

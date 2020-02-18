@@ -520,13 +520,12 @@ fn coin_operations_by_app() {
     );
 
     // check this fails w/o token
-    // TODO: enable this tests + more when checking tokens
-    // common::send_request_expect_err_no_token(
-    //     &mut env,
-    //     &mut client_b,
-    //     Request::GetBalance,
-    //     NdError::AccessDenied("Permission deniedddd".to_string()),
-    // );
+    common::send_request_expect_err_no_token(
+        &mut env,
+        &mut app,
+        Request::GetBalance,
+        NdError::AccessDenied("No token provided".to_string()),
+    );
 }
 
 #[test]
@@ -563,6 +562,13 @@ fn coin_operations_by_app_with_insufficient_permissions() {
         &mut app,
         Request::GetBalance,
         NdError::AccessDenied("Invalid caveat \"get_balance\"".to_string()),
+    );
+
+    common::send_request_expect_err_no_token(
+        &mut env,
+        &mut app,
+        Request::GetBalance,
+        NdError::AccessDenied("No token provided".to_string()),
     );
 
     // The attempt to transfer some coins by the app fails.
@@ -2483,6 +2489,14 @@ fn app_permissions() {
             (),
         );
 
+        // check no token fails
+        common::send_request_expect_err_no_token(
+            &mut env,
+            &mut app_0,
+            Request::AppendUnseq(append.clone()),
+            NdError::AccessDenied("No token provided".to_string()),
+        );
+
         common::send_request_expect_err(
             &mut env,
             &mut app_1,
@@ -2521,6 +2535,14 @@ fn app_permissions() {
         Response::GetBalance(Ok(unwrap!(Coins::from_nano(996)))),
     );
 
+    // but only when it has a token
+    common::send_request_expect_err_no_token(
+        &mut env,
+        &mut app_0,
+        Request::GetBalance,
+        NdError::AccessDenied("No token provided".to_string()),
+    );
+
     let amount = unwrap!(Coins::from_nano(900));
     let expected = Response::Transaction(Ok(Transaction { id: 1, amount }));
     let name: XorName = env.rng().gen();
@@ -2537,6 +2559,18 @@ fn app_permissions() {
             transaction_id: 1,
         },
         expected,
+    );
+
+    // but only when it has a token
+    common::send_request_expect_err_no_token(
+        &mut env,
+        &mut app_3,
+        Request::TransferCoins {
+            destination: *creditor.public_id().name(),
+            amount,
+            transaction_id: 1,
+        },
+        NdError::AccessDenied("No token provided".to_string()),
     );
 
     // App 3 cannot mutate on behalf of the user
@@ -2586,6 +2620,7 @@ fn put_seq_mutable_data() {
         Request::GetMData(MDataAddress::Seq { name, tag }),
         MData::Seq(mdata),
     );
+
 }
 
 #[test]
@@ -2612,6 +2647,8 @@ fn put_unseq_mutable_data() {
         Request::GetMData(MDataAddress::Unseq { name, tag }),
         MData::Unseq(mdata),
     );
+
+
 }
 
 #[test]

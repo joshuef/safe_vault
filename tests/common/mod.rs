@@ -665,6 +665,7 @@ fn generate_token_w_caveat_for_random_app(client: &ClientFullId) -> AuthToken {
 
 
 impl TestApp {
+    // TODO setup to create token for client itself, as well as setting AuthTokenHashes
     fn new_disconnected(rng: &mut TestRng, owner: &ClientFullId) -> Self {
         let (tx, rx) = crossbeam_channel::unbounded();
         let config = quic_p2p::Config {

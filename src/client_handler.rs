@@ -1818,7 +1818,7 @@ impl ClientHandler {
     ) -> Result<(), NdError> {
         // simple func to check basic perms
         fn caveat_truth_checker(contents: String) -> bool {
-            println!("CHECKING EXTRA CAVEATTTTTT contennnttt::::::::::: {:?}", &contents);
+            warn!("CHECKING EXTRA CAVEATTTTTT contennnttt::::::::::: {:?}", &contents);
 
             contents.as_str() == "true"
         }
@@ -1829,26 +1829,34 @@ impl ClientHandler {
                 self.verify_token(app_id, message_id, &auth_token)?;
 
 
-                let _extra_check_is_valid = match extra_caveat_to_check {
+                match extra_caveat_to_check {
                     // second... any general caveat checks...
                     // currently limited to only one check with this setup.
                     // TODO make this more flexible
                     Some(caveat) => {
 
                         println!("CHECKING EXTRA CAVEATTTTTT, {:?}", &caveat);
-                        let validity = auth_token.clone().verify_caveat( &caveat, caveat_truth_checker)?;
-                        validity
-                    }
-                    None => true
-                };
 
-                Ok(())
+                        // TODO: Enable this check when we're using tokens
+                        // if !auth_token.clone().verify_caveat( &caveat, caveat_truth_checker)?
+                        // {
+                        //      return Err(NdError::AccessDenied(format!("Invalid caveat {:?}", &caveat ).to_string()))
+                        // }
+
+                        Ok(())
+
+                    }
+                    None => Ok(())
+                }
+
             },
             None => {
                 warn!(
                     "{}: (Message: {:?}) from {} has no token.?",
                     self, message_id, app_id
                 );
+
+                println!("NO TOOOOOOOOOOOOOOOOKANNNN");
 
                 Err(NdError::AccessDenied("No token provided".to_string()))
             }

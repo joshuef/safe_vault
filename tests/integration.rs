@@ -517,6 +517,15 @@ fn coin_operations_by_app() {
         Request::GetBalance,
         unwrap!(Coins::from_nano(1)),
     );
+
+    // check this fails w/o token
+    // TODO: enable this tests + more when checking tokens
+    // common::send_request_expect_err_no_token(
+    //     &mut env,
+    //     &mut client_b,
+    //     Request::GetBalance,
+    //     NdError::AccessDenied("Permission deniedddd".to_string()),
+    // );
 }
 
 #[test]

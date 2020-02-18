@@ -458,19 +458,30 @@ pub trait TestClientTrait {
         let to_sign = unwrap!(bincode::serialize(&to_sign));
         let signature = self.full_id().sign(&to_sign);
 
-        // // TODO: here we create + sign a token w/ our full ID. To be verified against
-        // // auth held app PublicId
-        // let mut app_auth_token = AuthToken::new().unwrap();
-        //
-        // // Add some caveat for now to generate sig
-        // let caveat = ("expire".to_string(), "nowthen".to_string());
-        // app_auth_token.add_caveat(caveat, self.full_id()).unwrap();
-
         let msg = Message::Request {
             request,
             message_id,
             signature: Some(signature),
             token: self.token().clone(),
+        };
+
+        self.send(&msg);
+
+        message_id
+    }
+
+    fn send_request_no_token(&mut self, request: Request) -> MessageId {
+        let message_id = MessageId::new();
+
+        let to_sign = (&request, &message_id);
+        let to_sign = unwrap!(bincode::serialize(&to_sign));
+        let signature = self.full_id().sign(&to_sign);
+
+        let msg = Message::Request {
+            request,
+            message_id,
+            signature: Some(signature),
+            token: None,
         };
 
         self.send(&msg);
@@ -681,7 +692,7 @@ impl TestApp {
             full_id: FullId::App(app_full_id),
             public_id,
             connected_vaults: Default::default(),
-            // TODO use full id here....
+            // TODO pass perms to token generation
             token : Some( generate_token_w_caveat_for_random_app(owner) )
         }
     }
@@ -775,6 +786,23 @@ pub fn send_request_expect_err<T: TestClientTrait>(
     let message_id = client.send_request(request.clone());
     trace!(
         "client sent request {:?} with msg_id {:?}",
+        request,
+        message_id
+    );
+    env.poll();
+    assert_eq!(expected_response, client.expect_response(message_id, env));
+}
+
+pub fn send_request_expect_err_no_token<T: TestClientTrait>(
+    env: &mut Environment,
+    client: &mut T,
+    request: Request,
+    expected_error: Error,
+) {
+    let expected_response = request.error_response(expected_error);
+    let message_id = client.send_request_no_token(request.clone());
+    trace!(
+        "client sent request {:?} with msg_id {:?} without token",
         request,
         message_id
     );

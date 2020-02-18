@@ -45,7 +45,7 @@ use unwrap::unwrap;
 fn client_connects() {
     let mut env = Environment::new();
     let client = env.new_connected_client();
-    let _app = env.new_connected_app(client.full_id().clone());
+    let _app = env.new_connected_app(client.full_id().clone(), None);
 }
 
 #[test]
@@ -469,9 +469,14 @@ fn coin_operations_by_app() {
     // Create initial balance.
     common::create_balance(&mut env, &mut client_a, None, 10);
 
+    let permissions = AppPermissions {
+        transfer_coins: true,
+        get_balance: true,
+        perform_mutations: true,
+    };
     // Create an app with all permissions.
     // The `perform_mutations` permission is required to send a `CreateBalance` request.
-    let mut app = env.new_disconnected_app(client_a.full_id().clone());
+    let mut app = env.new_disconnected_app(client_a.full_id().clone(), Some(permissions.clone()));
     common::perform_mutation(
         &mut env,
         &mut client_a,
@@ -479,11 +484,7 @@ fn coin_operations_by_app() {
             key: *app.public_id().public_key(),
             version: 1,
             // TODO: move perms to token
-            permissions: AppPermissions {
-                transfer_coins: true,
-                get_balance: true,
-                perform_mutations: true,
-            },
+            permissions
         },
     );
     env.establish_connection(&mut app);
@@ -537,19 +538,21 @@ fn coin_operations_by_app_with_insufficient_permissions() {
     let balance = unwrap!(Coins::from_nano(10));
     common::create_balance(&mut env, &mut owner, None, balance);
 
+    let permissions = AppPermissions {
+        transfer_coins: false,
+        get_balance: false,
+        perform_mutations: false,
+    };
+
     // Create an app which does *not* have permission to transfer coins.
-    let mut app = env.new_disconnected_app(owner.full_id().clone());
+    let mut app = env.new_disconnected_app(owner.full_id().clone(), Some(permissions.clone()));
     common::perform_mutation(
         &mut env,
         &mut owner,
         Request::InsAuthKey {
             key: *app.public_id().public_key(),
             version: 1,
-            permissions: AppPermissions {
-                get_balance: false,
-                transfer_coins: false,
-                perform_mutations: false,
-            },
+            permissions
         },
     );
     env.establish_connection(&mut app);
@@ -2247,7 +2250,6 @@ fn auth_keys() {
 
     let mut env = Environment::new();
     let mut owner = env.new_connected_client();
-    let mut app = env.new_connected_app(owner.full_id().clone());
 
     // Create an app with some permissions to mutate and view the balance.
     let permissions = AppPermissions {
@@ -2255,6 +2257,7 @@ fn auth_keys() {
         perform_mutations: true,
         get_balance: true,
     };
+    let mut app = env.new_connected_app(owner.full_id().clone(), Some(permissions.clone()));
     let app_public_key = *app.public_id().public_key();
     let make_ins_request = |version| Request::InsAuthKey {
         key: app_public_key,
@@ -2340,56 +2343,59 @@ fn app_permissions() {
     let balance = unwrap!(Coins::from_nano(1000));
     common::create_balance(&mut env, &mut owner, None, balance);
 
+    let permissions = AppPermissions {
+        transfer_coins: true,
+        get_balance: false,
+        perform_mutations: false,
+    };
     // App 0 is authorized with permission to perform mutations.
-    let mut app_0 = env.new_disconnected_app(owner.full_id().clone());
+    let mut app_0 = env.new_disconnected_app(owner.full_id().clone(), Some(permissions.clone()));
     common::perform_mutation(
         &mut env,
         &mut owner,
         Request::InsAuthKey {
             key: *app_0.public_id().public_key(),
             version: 1,
-            permissions: AppPermissions {
-                perform_mutations: true,
-                get_balance: false,
-                transfer_coins: false,
-            },
+            permissions
         },
     );
     env.establish_connection(&mut app_0);
 
+    let permissions_app_1 = AppPermissions {
+        transfer_coins: false,
+        get_balance: true,
+        perform_mutations: false,
+    };
     // App 1 is authorized, and can only read balance.
-    let mut app_1 = env.new_disconnected_app(owner.full_id().clone());
+    let mut app_1 = env.new_disconnected_app(owner.full_id().clone(), Some(permissions_app_1.clone()));
     common::perform_mutation(
         &mut env,
         &mut owner,
         Request::InsAuthKey {
             key: *app_1.public_id().public_key(),
             version: 2,
-            permissions: AppPermissions {
-                transfer_coins: false,
-                get_balance: true,
-                perform_mutations: false,
-            },
+            permissions: permissions_app_1
         },
     );
     env.establish_connection(&mut app_1);
 
     // App 2 is not authorized.
-    let mut app_2 = env.new_connected_app(owner.full_id().clone());
+    let mut app_2 = env.new_connected_app(owner.full_id().clone(), None);
 
+    let permissions_app_3 = AppPermissions {
+        transfer_coins: true,
+        get_balance: false,
+        perform_mutations: false,
+    };
     // App 3 is authorized with permission to transfer coins only.
-    let mut app_3 = env.new_disconnected_app(owner.full_id().clone());
+    let mut app_3 = env.new_disconnected_app(owner.full_id().clone(), Some(permissions_app_3.clone()));
     common::perform_mutation(
         &mut env,
         &mut owner,
         Request::InsAuthKey {
             key: *app_3.public_id().public_key(),
             version: 3,
-            permissions: AppPermissions {
-                perform_mutations: false,
-                get_balance: false,
-                transfer_coins: true,
-            },
+            permissions: permissions_app_3
         },
     );
     env.establish_connection(&mut app_3);

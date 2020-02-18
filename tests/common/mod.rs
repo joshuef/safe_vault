@@ -23,6 +23,7 @@ use mock_quic_p2p::{self as quic_p2p, Builder, Event, Network, NodeInfo, OurType
 #[cfg(feature = "mock_parsec")]
 use routing::{self, NetworkConfig, Node};
 use safe_nd::{
+    GET_BALANCE, PERFORM_MUTATIONS, TRANSFER_COINS, AppPermissions,
     AppFullId, AppPublicId, AuthToken, ClientFullId, ClientPublicId, Coins, Error, FullId,
     HandshakeRequest, HandshakeResponse, Message, MessageId, Notification, PublicId, PublicKey,
     Request, Response, SafeKey, Signature, Transaction, TransactionId,
@@ -177,22 +178,22 @@ impl Environment {
         client
     }
 
-    pub fn new_connected_app(&mut self, owner: &FullId) -> TestApp {
+    pub fn new_connected_app(&mut self, owner: &FullId, perms: Option<AppPermissions>) -> TestApp {
         let owner_full_id = match owner {
             FullId::Client(id) => id,
             _ => return panic!("Trying to create app from non client full id")
         };
-        let mut app = TestApp::new_disconnected(&mut self.rng, owner_full_id);
+        let mut app = TestApp::new_disconnected(&mut self.rng, owner_full_id, perms);
         self.establish_connection(&mut app);
         app
     }
 
-    pub fn new_disconnected_app(&mut self, owner: &FullId) -> TestApp {
+    pub fn new_disconnected_app(&mut self, owner: &FullId, perms: Option<AppPermissions>) -> TestApp {
         let owner_full_id = match owner {
             FullId::Client(id) => id,
             _ => return panic!("Trying to create app from non client full id")
         };
-        TestApp::new_disconnected(&mut self.rng, owner_full_id)
+        TestApp::new_disconnected(&mut self.rng, owner_full_id, perms)
     }
 
     /// Establish connection assuming we are already at the destination section.
@@ -656,20 +657,50 @@ pub struct TestApp {
     token: Option<AuthToken>
 }
 
-fn generate_token_w_caveat_for_random_app(client: &ClientFullId) -> AuthToken {
+fn generate_token_w_caveat_for_app(client: &ClientFullId, perms: Option<AppPermissions>) -> AuthToken {
     use rand::thread_rng;
 
     // let id = FullId::App(AppFullId::new_bls(
     //     &mut thread_rng(),
     //     client.public_id().clone(),
-    // ));
 
+    // ));
     let mut token = AuthToken::new().unwrap();
 
-    let safe_key = SafeKey::client(client.clone());
-    let caveat = ("expire".to_string(), "nowthen".to_string());
+    match perms {
+        Some(app_permissions) => {
+            let transfer_coins_caveat = (
+                TRANSFER_COINS.to_string(),
+                format!("{}", app_permissions.transfer_coins),
+            );
+            let mutate_caveat = (
+                PERFORM_MUTATIONS.to_string(),
+                format!("{}", app_permissions.perform_mutations),
+            );
+            let balance_caveat = (
+                GET_BALANCE.to_string(),
+                format!("{}", app_permissions.get_balance),
+            );
+            let app_safe_key = SafeKey::client(client.clone());
 
-    token.add_caveat(caveat, &safe_key).unwrap();
+            token
+            .add_caveat(transfer_coins_caveat, &app_safe_key)
+            .expect("Failed to add transfer caveat to token.");
+            token
+            .add_caveat(mutate_caveat, &app_safe_key)
+            .expect("Failed to add mutate caveat to token.");
+            token
+            .add_caveat(balance_caveat, &app_safe_key)
+            .expect("Failed to add get_balance caveat to token.");
+
+        },
+        None => {}
+    };
+
+
+    // let caveat = ("expire".to_string(), "nowthen".to_string());
+
+    // token.add_caveat(caveat, &safe_key).unwrap();
 
     token
 }
@@ -677,7 +708,7 @@ fn generate_token_w_caveat_for_random_app(client: &ClientFullId) -> AuthToken {
 
 impl TestApp {
     // TODO setup to create token for client itself, as well as setting AuthTokenHashes
-    fn new_disconnected(rng: &mut TestRng, owner: &ClientFullId) -> Self {
+    fn new_disconnected(rng: &mut TestRng, owner: &ClientFullId, perms: Option<AppPermissions>) -> Self {
         let (tx, rx) = crossbeam_channel::unbounded();
         let config = quic_p2p::Config {
             our_type: OurType::Client,
@@ -693,7 +724,7 @@ impl TestApp {
             public_id,
             connected_vaults: Default::default(),
             // TODO pass perms to token generation
-            token : Some( generate_token_w_caveat_for_random_app(owner) )
+            token : Some( generate_token_w_caveat_for_app(owner, perms) )
         }
     }
 

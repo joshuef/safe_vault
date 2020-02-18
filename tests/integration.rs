@@ -562,7 +562,7 @@ fn coin_operations_by_app_with_insufficient_permissions() {
         &mut env,
         &mut app,
         Request::GetBalance,
-        NdError::AccessDenied("Permission denied".to_string()),
+        NdError::AccessDenied("Invalid caveat \"get_balance\"".to_string()),
     );
 
     // The attempt to transfer some coins by the app fails.
@@ -576,7 +576,7 @@ fn coin_operations_by_app_with_insufficient_permissions() {
             amount: unwrap!(Coins::from_nano(1)),
             transaction_id,
         },
-        NdError::AccessDenied("Permission denied".to_string()),
+        NdError::AccessDenied("Invalid caveat \"transfer_coins\"".to_string()),
     );
 
     // The owners balance is unchanged.
@@ -2344,9 +2344,9 @@ fn app_permissions() {
     common::create_balance(&mut env, &mut owner, None, balance);
 
     let permissions = AppPermissions {
-        transfer_coins: true,
+        transfer_coins: false,
         get_balance: false,
-        perform_mutations: false,
+        perform_mutations: true,
     };
     // App 0 is authorized with permission to perform mutations.
     let mut app_0 = env.new_disconnected_app(owner.full_id().clone(), Some(permissions.clone()));

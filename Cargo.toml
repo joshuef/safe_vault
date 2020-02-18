@@ -55,4 +55,4 @@ mock_parsec = ["routing/mock", "mock_base"]
 
 
 [patch.crates-io]
-safe-nd = { git = "https://github.com/joshuef/safe-nd.git", rev = "019f6406134b350029c1e3be63b5dddd634ecd26"}
+safe-nd = { git = "https://github.com/joshuef/safe-nd.git", rev = "5a32e822aaba36e180f3baad7a341e6f59476e74"}

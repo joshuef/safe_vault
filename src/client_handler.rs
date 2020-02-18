@@ -1747,35 +1747,35 @@ impl ClientHandler {
         };
 
         // remove these current permission checks...
-        let result = match utils::authorisation_kind(request) {
-            AuthorisationKind::GetPub => Ok(()),
-            AuthorisationKind::GetUnpub => {
-                self.check_app_permissions(app_id, message_id, |_| true)
-            }
-            AuthorisationKind::GetBalance => {
-                self.check_app_permissions(app_id, message_id, |perms| perms.get_balance )
-            }
-            AuthorisationKind::Mut => {
-                self.check_app_permissions(app_id, message_id, |perms| {
-                    perms.perform_mutations
-                })
-            }
-            AuthorisationKind::TransferCoins => {
-                self.check_app_permissions(app_id, message_id, |perms| perms.transfer_coins )
-            }
-            AuthorisationKind::MutAndTransferCoins => {
-                self.check_app_permissions(app_id, message_id, |perms| {
-                    perms.transfer_coins && perms.perform_mutations
-                })
-            }
-            AuthorisationKind::ManageAppKeys => Err(NdError::AccessDenied("Not the owner".to_string() ) ),
-        };
-
-        // early return for standard checks
-        if let Err(error) = result {
-            self.send_response_to_client(message_id, request.error_response(error));
-            return None;
-        }
+        // let result = match utils::authorisation_kind(request) {
+        //     AuthorisationKind::GetPub => Ok(()),
+        //     AuthorisationKind::GetUnpub => {
+        //         self.check_app_permissions(app_id, message_id, |_| true)
+        //     }
+        //     AuthorisationKind::GetBalance => {
+        //         self.check_app_permissions(app_id, message_id, |perms| perms.get_balance )
+        //     }
+        //     AuthorisationKind::Mut => {
+        //         self.check_app_permissions(app_id, message_id, |perms| {
+        //             perms.perform_mutations
+        //         })
+        //     }
+        //     AuthorisationKind::TransferCoins => {
+        //         self.check_app_permissions(app_id, message_id, |perms| perms.transfer_coins )
+        //     }
+        //     AuthorisationKind::MutAndTransferCoins => {
+        //         self.check_app_permissions(app_id, message_id, |perms| {
+        //             perms.transfer_coins && perms.perform_mutations
+        //         })
+        //     }
+        //     AuthorisationKind::ManageAppKeys => Err(NdError::AccessDenied("Not the owner".to_string() ) ),
+        // };
+        //
+        // // early return for standard checks
+        // if let Err(error) = result {
+        //     self.send_response_to_client(message_id, request.error_response(error));
+        //     return None;
+        // }
 
         let token_result = match utils::authorisation_kind(request) {
             AuthorisationKind::GetPub => Ok(()),
@@ -1838,10 +1838,10 @@ impl ClientHandler {
                         println!("CHECKING EXTRA CAVEATTTTTT, {:?}", &caveat);
 
                         // TODO: Enable this check when we're using tokens
-                        // if !auth_token.clone().verify_caveat( &caveat, caveat_truth_checker)?
-                        // {
-                        //      return Err(NdError::AccessDenied(format!("Invalid caveat {:?}", &caveat ).to_string()))
-                        // }
+                        if !auth_token.clone().verify_caveat( &caveat, caveat_truth_checker)?
+                        {
+                             return Err(NdError::AccessDenied(format!("Invalid caveat {:?}", &caveat ).to_string()))
+                        }
 
                         Ok(())
 

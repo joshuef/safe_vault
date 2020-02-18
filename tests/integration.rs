@@ -2463,10 +2463,10 @@ fn app_permissions() {
         &mut env,
         &mut app_2,
         Request::GetAData(unpub_data_address),
-        NdError::AccessDenied("Permission denied".to_string()),
+        NdError::AccessDenied("Invalid token signature".to_string()),
     );
 
-    // Only the app with the transfer coins permission can perform mutable request.
+    // Only the app with the transfer coins permission (app3) can perform mutable request.
     for address in [pub_data_address, unpub_data_address].iter().cloned() {
         let append = ADataAppendOperation {
             address,
@@ -2487,13 +2487,13 @@ fn app_permissions() {
             &mut env,
             &mut app_1,
             Request::AppendUnseq(append.clone()),
-            NdError::AccessDenied("Permission denied".to_string()),
+            NdError::AccessDenied("Invalid caveat \"perform_mutations\"".to_string()),
         );
         common::send_request_expect_err(
             &mut env,
             &mut app_2,
             Request::AppendUnseq(append),
-            NdError::AccessDenied("Permission denied".to_string()),
+            NdError::AccessDenied("Invalid token signature".to_string()),
         );
     }
 
@@ -2510,7 +2510,7 @@ fn app_permissions() {
             amount: unwrap!(Coins::from_nano(50)),
             transaction_id: 0,
         },
-        NdError::AccessDenied("Permission denied".to_string()),
+        NdError::AccessDenied("Invalid caveat \"transfer_coins\"".to_string()),
     );
 
     // App1 can read balance
@@ -2544,7 +2544,7 @@ fn app_permissions() {
         &mut env,
         &mut app_3,
         Request::PutMData(MData::from(data)),
-        NdError::AccessDenied("Permission denied".to_string()),
+        NdError::AccessDenied("Invalid caveat \"perform_mutations\"".to_string()),
     );
 
     // App 3 cannot read balance of the user
@@ -2552,7 +2552,7 @@ fn app_permissions() {
         &mut env,
         &mut app_3,
         Request::GetBalance,
-        NdError::AccessDenied("Permission denied".to_string()),
+        NdError::AccessDenied("Invalid caveat \"get_balance\"".to_string()),
     )
 }
 

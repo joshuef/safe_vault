@@ -448,7 +448,7 @@ impl ClientHandler {
     /// Verifies token validity for a given PublicId
     fn is_valid_token_for_app(&self, client_id: &ClientPublicId, token: &AuthToken) -> bool {
         let public_id = &PublicId::Client(client_id.clone());
-        token.is_valid_for_public_key(&public_id.public_key()).is_ok()
+        token.is_valid_for_public_key(&public_id.public_key()).expect("Error validating token")
     }
 
     fn handle_get_mdata(
@@ -1703,35 +1703,35 @@ impl ClientHandler {
 
     // TODO: Should we reply to message here?
     /// Wrapper func to return result of token verification.
-    fn verify_token(
-        &mut self,
-        app_id: &AppPublicId,
-        message_id: MessageId,
-        token: &AuthToken,
-    ) -> Result<(), String> {
-        let valid = self.is_valid_token_for_app(app_id.owner(), token);
-        // let valid = match token {
-        //     Some(auth_token) =>
-        //     None => {
-        //         warn!(
-        //             "{}: (Message: {:?}) from {} has invalid token",
-        //             self, message_id, app_id
-        //         );
-        //
-        //         return Err("No token provided".to_string());
-        //     }
-        // };
-
-        if valid {
-            Ok(())
-        } else {
-            warn!(
-                "{}: (Message: {:?}) from {} has invalid token",
-                self, message_id, app_id
-            );
-            Err("Invalid token provided".to_string())
-        }
-    }
+    // fn verify_token(
+    //     &mut self,
+    //     app_id: &AppPublicId,
+    //     message_id: MessageId,
+    //     token: &AuthToken,
+    // ) -> Result<(), String> {
+    //     let valid = self.is_valid_token_for_app(app_id.owner(), token);
+    //     // let valid = match token {
+    //     //     Some(auth_token) =>
+    //     //     None => {
+    //     //         warn!(
+    //     //             "{}: (Message: {:?}) from {} has invalid token",
+    //     //             self, message_id, app_id
+    //     //         );
+    //     //
+    //     //         return Err("No token provided".to_string());
+    //     //     }
+    //     // };
+    //
+    //     if valid {
+    //         Ok(())
+    //     } else {
+    //         warn!(
+    //             "{}: (Message: {:?}) from {} has invalid token",
+    //             self, message_id, app_id
+    //         );
+    //         Err(NdError::AccessDenied("Invalid token provided".to_string()))
+    //     }
+    // }
 
     // If the client is app, check if it is authorised to perform the given request.
     fn authorise_app(
@@ -1780,6 +1780,7 @@ impl ClientHandler {
         let token_result = match utils::authorisation_kind(request) {
             AuthorisationKind::GetPub => Ok(()),
             AuthorisationKind::GetUnpub => {
+                println!("getunpub reqqqqqqqqqqq {:?}", &token);
                 self.check_app_token(app_id, token, message_id, None)
             }
             AuthorisationKind::GetBalance => {
@@ -1816,18 +1817,31 @@ impl ClientHandler {
         message_id: MessageId,
         extra_caveat_to_check: Option<String>
     ) -> Result<(), NdError> {
+        println!("------------------------------------>>>>> checking token {:?}", &extra_caveat_to_check);
         // simple func to check basic perms
         fn caveat_truth_checker(contents: String) -> bool {
-            warn!("CHECKING EXTRA CAVEATTTTTT contennnttt::::::::::: {:?}", &contents);
+            println!("CHECKING EXTRA CAVEATTTTTT contennnttt::::::::::: {:?}", &contents);
 
             contents.as_str() == "true"
         }
 
-        let valid : Result<(), NdError> = match token {
+
+        // let caveat_concern = match extra_caveat_to_check {
+        //     Some(_) => true,
+        //     None => false
+        // };
+
+        match token {
             Some(auth_token) => {
                 // first validate the token.
-                self.verify_token(app_id, message_id, &auth_token)?;
+                let has_valid_sig = self.is_valid_token_for_app(app_id.owner(), &auth_token);
 
+                println!("GOT A TOKENNNNNN");
+                if ! has_valid_sig {
+                    // Ok(())
+                // } else {
+                    return Err(NdError::AccessDenied("Invalid token signature".to_string()) )
+                }
 
                 match extra_caveat_to_check {
                     // second... any general caveat checks...
@@ -1858,15 +1872,11 @@ impl ClientHandler {
 
                 println!("NO TOOOOOOOOOOOOOOOOKANNNN");
 
-                Err(NdError::AccessDenied("No token provided".to_string()))
+                return Err(NdError::AccessDenied("No token provided".to_string()))
             }
-        };
-
-        if valid.is_ok() {
-            Ok(())
-        } else {
-            Err(NdError::AccessDenied("Permission denied".to_string()) )
         }
+
+
     }
 
     fn check_app_permissions(

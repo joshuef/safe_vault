@@ -445,11 +445,13 @@ impl ClientHandler {
     }
 
     /// Verifies token validity for a given PublicId
-    fn is_valid_token_for_app(&self, client_id: &ClientPublicId, token: &AuthToken) -> bool {
+    fn is_valid_token_for_app(
+        &self,
+        client_id: &ClientPublicId,
+        token: &AuthToken,
+    ) -> Result<bool, NdError> {
         let public_id = &PublicId::Client(client_id.clone());
-        token
-            .is_valid_for_public_key(&public_id.public_key())
-            .expect("Error validating token")
+        token.is_valid_for_public_key(&public_id.public_key())
     }
 
     fn handle_get_mdata(
@@ -1761,7 +1763,7 @@ impl ClientHandler {
         match token {
             Some(auth_token) => {
                 // first validate the token.
-                let has_valid_sig = self.is_valid_token_for_app(app_id.owner(), &auth_token);
+                let has_valid_sig = self.is_valid_token_for_app(app_id.owner(), &auth_token)?;
 
                 if !has_valid_sig {
                     return Err(NdError::AccessDenied("Invalid token signature".to_string()));

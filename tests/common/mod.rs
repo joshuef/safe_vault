@@ -668,31 +668,31 @@ fn generate_token_w_caveat_for_app(
     let mut token = AuthToken::new().unwrap();
 
     if let Some(app_permissions) = perms {
-            let transfer_coins_caveat = (
-                TRANSFER_COINS.to_string(),
-                format!("{}", app_permissions.transfer_coins),
-            );
-            let mutate_caveat = (
-                PERFORM_MUTATIONS.to_string(),
-                format!("{}", app_permissions.perform_mutations),
-            );
-            let balance_caveat = (
-                GET_BALANCE.to_string(),
-                format!("{}", app_permissions.get_balance),
-            );
-            let app_safe_key = SafeKey::client(client.clone());
+        let transfer_coins_caveat = (
+            TRANSFER_COINS.to_string(),
+            format!("{}", app_permissions.transfer_coins),
+        );
+        let mutate_caveat = (
+            PERFORM_MUTATIONS.to_string(),
+            format!("{}", app_permissions.perform_mutations),
+        );
+        let balance_caveat = (
+            GET_BALANCE.to_string(),
+            format!("{}", app_permissions.get_balance),
+        );
+        let app_safe_key = SafeKey::client(client.clone());
 
-            token
-                .add_caveat(transfer_coins_caveat, &app_safe_key)
-                .expect("Failed to add transfer caveat to token.");
-            token
-                .add_caveat(mutate_caveat, &app_safe_key)
-                .expect("Failed to add mutate caveat to token.");
-            token
-                .add_caveat(balance_caveat, &app_safe_key)
-                .expect("Failed to add get_balance caveat to token.");
-        }
-        // None => {}
+        token
+            .add_caveat(transfer_coins_caveat, &app_safe_key)
+            .expect("Failed to add transfer caveat to token.");
+        token
+            .add_caveat(mutate_caveat, &app_safe_key)
+            .expect("Failed to add mutate caveat to token.");
+        token
+            .add_caveat(balance_caveat, &app_safe_key)
+            .expect("Failed to add get_balance caveat to token.");
+    }
+    // None => {}
     // };
 
     token

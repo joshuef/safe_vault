@@ -481,7 +481,7 @@ fn coin_operations_by_app() {
     common::perform_mutation(
         &mut env,
         &mut client_a,
-        Request::InsAuthKey {
+        Request::InsAppCredentials {
             key: *app.public_id().public_key(),
             version: 1,
             token: unwrap!(app.token()),
@@ -548,7 +548,7 @@ fn coin_operations_by_app_with_insufficient_permissions() {
     common::perform_mutation(
         &mut env,
         &mut owner,
-        Request::InsAuthKey {
+        Request::InsAppCredentials {
             key: *app.public_id().public_key(),
             version: 1,
             token: unwrap!(app.token()),
@@ -2252,7 +2252,7 @@ fn delete_immutable_data() {
 fn auth_keys() {
     type KeysResult = NdResult<(BTreeMap<PublicKey, [u8; 32]>, u64)>;
     fn list_keys<T: TestClientTrait>(env: &mut Environment, client: &mut T, expected: KeysResult) {
-        let request = Request::ListAuthKeysAndVersion;
+        let request = Request::ListAppCredentialsAndVersion;
         match expected {
             Ok(expected) => common::send_request_expect_ok(env, client, request, expected),
             Err(expected) => common::send_request_expect_err(env, client, request, expected),
@@ -2271,7 +2271,7 @@ fn auth_keys() {
     let mut app = env.new_connected_app(owner.full_id(), Some(permissions));
     let token = unwrap!(app.token());
     let app_public_key = *app.public_id().public_key();
-    let make_ins_request = |version| Request::InsAuthKey {
+    let make_ins_request = |version| Request::InsAppCredentials {
         key: app_public_key,
         version,
         token: token.clone(),
@@ -2312,7 +2312,7 @@ fn auth_keys() {
     common::send_request_expect_err(
         &mut env,
         &mut app,
-        Request::ListAuthKeysAndVersion,
+        Request::ListAppCredentialsAndVersion,
         NdError::AccessDenied("Not the owner".to_string()),
     );
     common::send_request_expect_err(
@@ -2321,7 +2321,7 @@ fn auth_keys() {
         make_ins_request(2),
         NdError::AccessDenied("Not the owner".to_string()),
     );
-    let del_auth_key_request = Request::DelAuthKey {
+    let del_auth_key_request = Request::DelAppCredentials {
         key: *app.public_id().public_key(),
         version: 2,
     };
@@ -2367,7 +2367,7 @@ fn app_permissions() {
     common::perform_mutation(
         &mut env,
         &mut owner,
-        Request::InsAuthKey {
+        Request::InsAppCredentials {
             key: *app_0.public_id().public_key(),
             version: 1,
             token: unwrap!(app_0.token()),
@@ -2385,7 +2385,7 @@ fn app_permissions() {
     common::perform_mutation(
         &mut env,
         &mut owner,
-        Request::InsAuthKey {
+        Request::InsAppCredentials {
             key: *app_1.public_id().public_key(),
             version: 2,
             token: unwrap!(app_1.token()),
@@ -2406,7 +2406,7 @@ fn app_permissions() {
     common::perform_mutation(
         &mut env,
         &mut owner,
-        Request::InsAuthKey {
+        Request::InsAppCredentials {
             key: *app_3.public_id().public_key(),
             version: 3,
             token: unwrap!(app_3.token()),

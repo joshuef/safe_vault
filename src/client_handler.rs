@@ -6,11 +6,11 @@
 // KIND, either express or implied. Please review the Licences for the specific language governing
 // permissions and limitations relating to use of the SAFE Network Software.
 
-mod auth_keys;
+mod app_credentials;
 mod balance;
 
 use self::{
-    auth_keys::AuthKeysDb,
+    app_credentials::AppCredentialsDb,
     balance::{Balance, BalancesDb},
 };
 use crate::{
@@ -56,7 +56,7 @@ struct ClientInfo {
 
 pub(crate) struct ClientHandler {
     id: NodePublicId,
-    auth_keys: AuthKeysDb,
+    app_credentials: AppCredentialsDb,
     balances: BalancesDb,
     clients: HashMap<SocketAddr, ClientInfo>,
     pending_msg_ids: HashMap<MessageId, SocketAddr>,
@@ -77,7 +77,7 @@ impl ClientHandler {
     ) -> Result<Self> {
         let root_dir = config.root_dir()?;
         let root_dir = root_dir.as_path();
-        let auth_keys = AuthKeysDb::new(root_dir, init_mode)?;
+        let app_credentials = AppCredentialsDb::new(root_dir, init_mode)?;
         let balances = BalancesDb::new(root_dir, init_mode)?;
         let login_packets = LoginPacketChunkStore::new(
             root_dir,
@@ -87,7 +87,7 @@ impl ClientHandler {
         )?;
         let client_handler = Self {
             id,
-            auth_keys,
+            app_credentials: app_credentials,
             balances,
             clients: Default::default(),
             pending_msg_ids: Default::default(),
@@ -407,14 +407,14 @@ impl ClientHandler {
             //
             // ===== Client (Owner) to ClientHandlers =====
             //
-            ListAuthKeysAndVersion => self.handle_list_auth_keys_and_version(client, message_id),
-            InsAuthKey {
+            ListAppCredentialsAndVersion => self.handle_list_app_credentials_and_version(client, message_id),
+            InsAppCredentials {
                 key,
                 version,
                 token,
-            } => self.handle_ins_auth_key_client_req(client, key, version, token, message_id),
-            DelAuthKey { key, version } => {
-                self.handle_del_auth_key_client_req(client, key, version, message_id)
+            } => self.handle_ins_app_credentials_client_req(client, key, version, token, message_id),
+            DelAppCredentials { key, version } => {
+                self.handle_del_app_credentials_client_req(client, key, version, message_id)
             }
         }
     }
@@ -841,13 +841,13 @@ impl ClientHandler {
                 &updated_login_packet,
                 message_id,
             ),
-            InsAuthKey {
+            InsAppCredentials {
                 key,
                 version,
                 token,
-            } => self.handle_ins_auth_key_vault(requester, key, version, token, message_id),
-            DelAuthKey { key, version } => {
-                self.handle_del_auth_key_vault(requester, key, version, message_id)
+            } => self.handle_ins_app_credentials_vault(requester, key, version, token, message_id),
+            DelAppCredentials { key, version } => {
+                self.handle_del_app_credentials_vault(requester, key, version, message_id)
             }
             PutIData(_)
             | GetIData(_)
@@ -884,7 +884,7 @@ impl ClientHandler {
             | AppendSeq { .. }
             | AppendUnseq(_)
             | GetBalance
-            | ListAuthKeysAndVersion
+            | ListAppCredentialsAndVersion
             | GetLoginPacket(..) => {
                 error!(
                     "{}: Should not receive {:?} as a client handler.",
@@ -953,7 +953,7 @@ impl ClientHandler {
             //
             // ===== Invalid =====
             //
-            GetLoginPacket(_) | GetBalance(_) | ListAuthKeysAndVersion(_) => {
+            GetLoginPacket(_) | GetBalance(_) | ListAppCredentialsAndVersion(_) => {
                 error!(
                     "{}: Should not receive {:?} as a client handler.",
                     self, response
@@ -1568,20 +1568,20 @@ impl ClientHandler {
             })
     }
 
-    fn handle_list_auth_keys_and_version(
+    fn handle_list_app_credentials_and_version(
         &mut self,
         client: &ClientInfo,
         message_id: MessageId,
     ) -> Option<Action> {
         let result = Ok(self
-            .auth_keys
-            .list_auth_keys_and_version(utils::client(&client.public_id)?));
+            .app_credentials
+            .list_app_credentials_and_version(utils::client(&client.public_id)?));
 
-        self.send_response_to_client(message_id, Response::ListAuthKeysAndVersion(result));
+        self.send_response_to_client(message_id, Response::ListAppCredentialsAndVersion(result));
         None
     }
 
-    fn handle_ins_auth_key_client_req(
+    fn handle_ins_app_credentials_client_req(
         &self,
         client: &ClientInfo,
         key: PublicKey,
@@ -1590,7 +1590,7 @@ impl ClientHandler {
         message_id: MessageId,
     ) -> Option<Action> {
         Some(Action::ConsensusVote(ConsensusAction::Forward {
-            request: Request::InsAuthKey {
+            request: Request::InsAppCredentials {
                 key,
                 version: new_version,
                 token,
@@ -1600,7 +1600,7 @@ impl ClientHandler {
         }))
     }
 
-    fn handle_ins_auth_key_vault(
+    fn handle_ins_app_credentials_vault(
         &mut self,
         client: PublicId,
         key: PublicKey,
@@ -1609,8 +1609,8 @@ impl ClientHandler {
         message_id: MessageId,
     ) -> Option<Action> {
         let result = self
-            .auth_keys
-            .ins_auth_key(utils::client(&client)?, key, new_version, token);
+            .app_credentials
+            .ins_app_credentials(utils::client(&client)?, key, new_version, token);
         Some(Action::RespondToClientHandlers {
             sender: *self.id.name(),
             rpc: Rpc::Response {
@@ -1623,7 +1623,7 @@ impl ClientHandler {
         })
     }
 
-    fn handle_del_auth_key_client_req(
+    fn handle_del_app_credentials_client_req(
         &mut self,
         client: &ClientInfo,
         key: PublicKey,
@@ -1631,7 +1631,7 @@ impl ClientHandler {
         message_id: MessageId,
     ) -> Option<Action> {
         Some(Action::ConsensusVote(ConsensusAction::Forward {
-            request: Request::DelAuthKey {
+            request: Request::DelAppCredentials {
                 key,
                 version: new_version,
             },
@@ -1640,7 +1640,7 @@ impl ClientHandler {
         }))
     }
 
-    fn handle_del_auth_key_vault(
+    fn handle_del_app_credentials_vault(
         &mut self,
         client: PublicId,
         key: PublicKey,
@@ -1648,8 +1648,8 @@ impl ClientHandler {
         message_id: MessageId,
     ) -> Option<Action> {
         let result = self
-            .auth_keys
-            .del_auth_key(utils::client(&client)?, key, new_version);
+            .app_credentials
+            .del_app_credentials(utils::client(&client)?, key, new_version);
         Some(Action::RespondToClientHandlers {
             sender: *self.id.name(),
             rpc: Rpc::Response {
@@ -1719,7 +1719,7 @@ impl ClientHandler {
             _ => return Some(()),
         };
         let client_id = app_id.owner();
-        let auth_keys = self.auth_keys.list_auth_keys_and_version(&client_id).0;
+        let auth_keys = self.app_credentials.list_app_credentials_and_version(&client_id).0;
 
         let request_kind = utils::authorisation_kind(request);
 

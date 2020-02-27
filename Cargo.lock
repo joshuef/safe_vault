@@ -2289,7 +2289,7 @@ checksum = "bfa8506c1de11c9c4e4c38863ccbe02a305c8188e85a05a784c9e11e1c3910c8"
 [[package]]
 name = "safe-nd"
 version = "0.7.2"
-source = "git+https://github.com/Yoga07/safe-nd.git?branch=token-storage#046dfa26633149bcfc1010c3c54cc199965aade3"
+source = "git+https://github.com/joshuef/safe-nd.git?rev=56c2211#56c2211d9c6c00bf4d732c9cf9b57ce26d9cb953"
 dependencies = [
  "bincode 1.1.4",
  "data-encoding",

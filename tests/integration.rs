@@ -24,6 +24,7 @@
 mod common;
 
 use self::common::{Environment, TestClientTrait};
+use bincode::serialize;
 use maplit::btreemap;
 use rand::{distributions::Standard, Rng};
 use safe_nd::{
@@ -73,7 +74,7 @@ fn invalid_signature() {
     // Invalid signature
     let other_full_id = ClientFullId::new_ed25519(env.rng());
     let to_sign = (&request, &message_id);
-    let to_sign = unwrap!(bincode::serialize(&to_sign));
+    let to_sign = unwrap!(serialize(&to_sign));
     let signature = other_full_id.sign(&to_sign);
 
     client.send(&Message::Request {
@@ -483,8 +484,7 @@ fn coin_operations_by_app() {
         Request::InsAuthKey {
             key: *app.public_id().public_key(),
             version: 1,
-            // TODO: move perms to token
-            permissions,
+            token: unwrap!(app.token()),
         },
     );
     env.establish_connection(&mut app);
@@ -524,7 +524,7 @@ fn coin_operations_by_app() {
         &mut env,
         &mut app,
         Request::GetBalance,
-        NdError::AccessDenied("No token provided".to_string()),
+        NdError::AccessDenied("Missing token".to_string()),
     );
 }
 
@@ -551,7 +551,7 @@ fn coin_operations_by_app_with_insufficient_permissions() {
         Request::InsAuthKey {
             key: *app.public_id().public_key(),
             version: 1,
-            permissions,
+            token: unwrap!(app.token()),
         },
     );
     env.establish_connection(&mut app);
@@ -561,14 +561,14 @@ fn coin_operations_by_app_with_insufficient_permissions() {
         &mut env,
         &mut app,
         Request::GetBalance,
-        NdError::AccessDenied("Invalid caveat \"get_balance\"".to_string()),
+        NdError::AccessDenied("Caveat verification failed".to_string()),
     );
 
     common::send_request_expect_err_no_token(
         &mut env,
         &mut app,
         Request::GetBalance,
-        NdError::AccessDenied("No token provided".to_string()),
+        NdError::AccessDenied("Missing token".to_string()),
     );
 
     // The attempt to transfer some coins by the app fails.
@@ -582,7 +582,7 @@ fn coin_operations_by_app_with_insufficient_permissions() {
             amount: unwrap!(Coins::from_nano(1)),
             transaction_id,
         },
-        NdError::AccessDenied("Invalid caveat \"transfer_coins\"".to_string()),
+        NdError::AccessDenied("Caveat verification failed".to_string()),
     );
 
     // The owners balance is unchanged.
@@ -2250,7 +2250,7 @@ fn delete_immutable_data() {
 
 #[test]
 fn auth_keys() {
-    type KeysResult = NdResult<(BTreeMap<PublicKey, AppPermissions>, u64)>;
+    type KeysResult = NdResult<(BTreeMap<PublicKey, [u8; 32]>, u64)>;
     fn list_keys<T: TestClientTrait>(env: &mut Environment, client: &mut T, expected: KeysResult) {
         let request = Request::ListAuthKeysAndVersion;
         match expected {
@@ -2269,11 +2269,12 @@ fn auth_keys() {
         get_balance: true,
     };
     let mut app = env.new_connected_app(owner.full_id(), Some(permissions));
+    let token = unwrap!(app.token());
     let app_public_key = *app.public_id().public_key();
     let make_ins_request = |version| Request::InsAuthKey {
         key: app_public_key,
         version,
-        permissions,
+        token: token.clone(),
     };
 
     // TODO - enable this once we're passed phase 1.
@@ -2301,7 +2302,9 @@ fn auth_keys() {
     list_keys(&mut env, &mut owner, Ok((expected_map.clone(), 0)));
 
     // Insert then list the app.
-    let _ = expected_map.insert(*app.public_id().public_key(), permissions);
+    let serialized_token = unwrap!(serialize(&token));
+    let hashed_token = tiny_keccak::sha3_256(serialized_token.as_slice());
+    let _ = expected_map.insert(*app.public_id().public_key(), hashed_token);
     common::perform_mutation(&mut env, &mut owner, make_ins_request(1));
     list_keys(&mut env, &mut owner, Ok((expected_map.clone(), 1)));
 
@@ -2367,7 +2370,7 @@ fn app_permissions() {
         Request::InsAuthKey {
             key: *app_0.public_id().public_key(),
             version: 1,
-            permissions,
+            token: unwrap!(app_0.token()),
         },
     );
     env.establish_connection(&mut app_0);
@@ -2385,7 +2388,7 @@ fn app_permissions() {
         Request::InsAuthKey {
             key: *app_1.public_id().public_key(),
             version: 2,
-            permissions: permissions_app_1,
+            token: unwrap!(app_1.token()),
         },
     );
     env.establish_connection(&mut app_1);
@@ -2406,7 +2409,7 @@ fn app_permissions() {
         Request::InsAuthKey {
             key: *app_3.public_id().public_key(),
             version: 3,
-            permissions: permissions_app_3,
+            token: unwrap!(app_3.token()),
         },
     );
     env.establish_connection(&mut app_3);
@@ -2474,7 +2477,7 @@ fn app_permissions() {
         &mut env,
         &mut app_2,
         Request::GetAData(unpub_data_address),
-        NdError::AccessDenied("Invalid token signature".to_string()),
+        NdError::AccessDenied("Permission denied: Token hash missing".to_string()),
     );
 
     // Only the app with the transfer coins permission (app3) can perform mutable request.
@@ -2499,20 +2502,20 @@ fn app_permissions() {
             &mut env,
             &mut app_0,
             Request::AppendUnseq(append.clone()),
-            NdError::AccessDenied("No token provided".to_string()),
+            NdError::AccessDenied("Missing token".to_string()),
         );
 
         common::send_request_expect_err(
             &mut env,
             &mut app_1,
             Request::AppendUnseq(append.clone()),
-            NdError::AccessDenied("Invalid caveat \"perform_mutations\"".to_string()),
+            NdError::AccessDenied("Caveat verification failed".to_string()),
         );
         common::send_request_expect_err(
             &mut env,
             &mut app_2,
             Request::AppendUnseq(append),
-            NdError::AccessDenied("Invalid token signature".to_string()),
+            NdError::AccessDenied("Permission denied: Token hash missing".to_string()),
         );
     }
 
@@ -2529,7 +2532,7 @@ fn app_permissions() {
             amount: unwrap!(Coins::from_nano(50)),
             transaction_id: 0,
         },
-        NdError::AccessDenied("Invalid caveat \"transfer_coins\"".to_string()),
+        NdError::AccessDenied("Caveat verification failed".to_string()),
     );
 
     // App1 can read balance
@@ -2545,7 +2548,7 @@ fn app_permissions() {
         &mut env,
         &mut app_0,
         Request::GetBalance,
-        NdError::AccessDenied("No token provided".to_string()),
+        NdError::AccessDenied("Missing token".to_string()),
     );
 
     let amount = unwrap!(Coins::from_nano(900));
@@ -2575,7 +2578,7 @@ fn app_permissions() {
             amount,
             transaction_id: 1,
         },
-        NdError::AccessDenied("No token provided".to_string()),
+        NdError::AccessDenied("Missing token".to_string()),
     );
 
     // App 3 cannot mutate on behalf of the user
@@ -2583,7 +2586,7 @@ fn app_permissions() {
         &mut env,
         &mut app_3,
         Request::PutMData(MData::from(data)),
-        NdError::AccessDenied("Invalid caveat \"perform_mutations\"".to_string()),
+        NdError::AccessDenied("Caveat verification failed".to_string()),
     );
 
     // App 3 cannot read balance of the user
@@ -2591,7 +2594,7 @@ fn app_permissions() {
         &mut env,
         &mut app_3,
         Request::GetBalance,
-        NdError::AccessDenied("Invalid caveat \"get_balance\"".to_string()),
+        NdError::AccessDenied("Caveat verification failed".to_string()),
     )
 }
 

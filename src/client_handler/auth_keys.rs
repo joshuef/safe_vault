@@ -7,22 +7,24 @@
 // permissions and limitations relating to use of the SAFE Network Software.
 
 use crate::{utils, vault::Init, Result, ToDbKey};
+use bincode::serialize;
 use log::{trace, warn};
 use pickledb::PickleDb;
-use safe_nd::{AppPermissions, ClientPublicId, Error as NdError, PublicKey, Result as NdResult};
+use safe_nd::{AuthToken, ClientPublicId, Error as NdError, PublicKey, Result as NdResult};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashMap},
     path::Path,
 };
+use tiny_keccak::sha3_256;
 
-type AuthKeysAsTuple = (BTreeMap<PublicKey, AppPermissions>, u64);
+type AuthKeysAsTuple = (BTreeMap<PublicKey, [u8; 32]>, u64);
 
 const AUTH_KEYS_DB_NAME: &str = "auth_keys.db";
 
 #[derive(Default, Serialize, Deserialize, Debug)]
 pub(super) struct AuthKeys {
-    apps: HashMap<PublicKey, AppPermissions>,
+    apps: HashMap<PublicKey, [u8; 32]>,
     version: u64,
 }
 
@@ -59,14 +61,16 @@ impl AuthKeysDb {
         client_id: &ClientPublicId,
         key: PublicKey,
         new_version: u64,
-        permissions: AppPermissions,
+        token: AuthToken,
     ) -> NdResult<()> {
         let db_key = client_id.to_db_key();
         let mut auth_keys = self.get_auth_keys_and_increment_version(&db_key, new_version)?;
-
+        let serialized_token = serialize(&token)
+            .map_err(|_| NdError::FailedToParse("Error serializing caveats".to_string()))?;
+        let hashed_token = sha3_256(serialized_token.as_slice());
         // TODO - should we assert the `key` is an App type?
 
-        let _ = auth_keys.apps.insert(key, permissions);
+        let _ = auth_keys.apps.insert(key, hashed_token);
         if let Err(error) = self.db.set(&db_key, &auth_keys) {
             warn!("Failed to write AuthKey to DB: {:?}", error);
             return Err(NdError::from("Failed to insert authorised key."));

@@ -375,7 +375,7 @@ impl<R: CryptoRng + Rng> Vault<R> {
             match utils::destination_address(&request) {
                 Some(address) => address,
                 None => {
-                    if let Request::InsAuthKey { .. } | Request::DelAuthKey { .. } = request {
+                    if let Request::InsAppCredentials { .. } | Request::DelAppCredentials { .. } = request {
                         Cow::Borrowed(self.id.public_id().name())
                     } else {
                         error!("{}: Logic error - no data handler address available.", self);
@@ -417,11 +417,11 @@ impl<R: CryptoRng + Rng> Vault<R> {
                     ..
                 }
                 | Rpc::Request {
-                    request: Request::InsAuthKey { .. },
+                    request: Request::InsAppCredentials { .. },
                     ..
                 }
                 | Rpc::Request {
-                    request: Request::DelAuthKey { .. },
+                    request: Request::DelAppCredentials { .. },
                     ..
                 } => self
                     .client_handler_mut()?

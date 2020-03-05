@@ -277,10 +277,10 @@ impl DataHandler {
             | CreateLoginPacketFor { .. }
             | UpdateLoginPacket(_)
             | GetLoginPacket(_)
-            | ListAuthKeysAndVersion
-            | InsAuthKey { .. }
+            | ListAppCredentialsAndVersion
+            | InsAppCredentials { .. }
             | TransferCoins { .. }
-            | DelAuthKey { .. } => {
+            | DelAppCredentials { .. } => {
                 error!(
                     "{}: Should not receive {:?} as a data handler.",
                     self, request
@@ -335,7 +335,7 @@ impl DataHandler {
             | GetUnpubADataUserPermissions(_)
             | Transaction(_)
             | GetBalance(_)
-            | ListAuthKeysAndVersion(_)
+            | ListAppCredentialsAndVersion(_)
             | GetLoginPacket(_) => {
                 error!(
                     "{}: Should not receive {:?} as a data handler.",

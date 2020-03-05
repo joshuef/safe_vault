@@ -183,7 +183,8 @@ impl Environment {
             FullId::Client(id) => id,
             _ => panic!("Trying to create app from non client full id"),
         };
-        let mut app = TestApp::new_disconnected(&mut self.rng, owner_full_id, perms);
+        let token = generate_token_w_caveat_for_app(owner_full_id, perms);
+        let mut app = TestApp::new_disconnected(&mut self.rng, owner_full_id, token);
         self.establish_connection(&mut app);
         app
     }
@@ -197,7 +198,8 @@ impl Environment {
             FullId::Client(id) => id,
             _ => panic!("Trying to create app from non client full id"),
         };
-        TestApp::new_disconnected(&mut self.rng, owner_full_id, perms)
+        let token = generate_token_w_caveat_for_app(owner_full_id, perms);
+        TestApp::new_disconnected(&mut self.rng, owner_full_id, token)
     }
 
     /// Establish connection assuming we are already at the destination section.
@@ -349,9 +351,7 @@ pub trait TestClientTrait {
     fn set_connected_vault(&mut self, connected_vault: NodeInfo);
     fn connected_vaults(&self) -> Vec<NodeInfo>;
 
-    fn token(&self) -> &Option<AuthToken> {
-        &None
-    }
+    fn token(&self) -> Option<AuthToken>;
 
     fn sign<T: AsRef<[u8]>>(&self, data: T) -> Signature {
         self.full_id().sign(data)
@@ -636,6 +636,10 @@ impl TestClientTrait for TestClient {
     fn connected_vaults(&self) -> Vec<NodeInfo> {
         self.connected_vaults.clone()
     }
+
+    fn token(&self) -> Option<AuthToken> {
+        None
+    }
 }
 
 impl Deref for TestClient {
@@ -692,18 +696,12 @@ fn generate_token_w_caveat_for_app(
             .add_caveat(balance_caveat, &app_safe_key)
             .expect("Failed to add get_balance caveat to token.");
     }
-    // None => {}
-    // };
 
     token
 }
 
 impl TestApp {
-    fn new_disconnected(
-        rng: &mut TestRng,
-        owner: &ClientFullId,
-        perms: Option<AppPermissions>,
-    ) -> Self {
+    fn new_disconnected(rng: &mut TestRng, owner: &ClientFullId, token: AuthToken) -> Self {
         let (tx, rx) = crossbeam_channel::unbounded();
         let config = quic_p2p::Config {
             our_type: OurType::Client,
@@ -718,7 +716,7 @@ impl TestApp {
             full_id: FullId::App(app_full_id),
             public_id,
             connected_vaults: Default::default(),
-            token: Some(generate_token_w_caveat_for_app(owner, perms)),
+            token: Some(token),
         }
     }
 
@@ -748,8 +746,8 @@ impl TestClientTrait for TestApp {
         self.connected_vaults.clone()
     }
 
-    fn token(&self) -> &Option<AuthToken> {
-        &self.token
+    fn token(&self) -> Option<AuthToken> {
+        self.token.clone()
     }
 }
 

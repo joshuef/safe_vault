@@ -2405,6 +2405,7 @@ dependencies = [
 [[package]]
 name = "sn_transfers"
 version = "0.4.1"
+source = "git+https://github.com/joshuef/sn_transfers?branch=ClarifyErrors#f19608ddfcfdd075111ab4cc0cda6e79dbfdc7df"
 dependencies = [
  "bincode",
  "crdts",

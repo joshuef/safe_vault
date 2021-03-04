@@ -7,7 +7,7 @@
 // permissions and limitations relating to use of the SAFE Network Software.
 
 use crate::{utils, Error, Result, ToDbKey};
-use log::{debug, trace};
+use log::{debug, trace, warn};
 use pickledb::PickleDb;
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
@@ -82,11 +82,14 @@ where
         debug!("Trying to insert replica event: {:?}", event);
         let key = &self.db.total_keys().to_string();
         if self.db.exists(key) {
+            warn!("Transfer event already exists... should this be an error?");
             return Err(Error::Logic(format!(
                 "Key exists: {}. Event: {:?}",
                 key, event
             )));
         }
+
+        debug!("Setting keyyy");
         self.db.set(key, &event).map_err(Error::PickleDb)
     }
 }

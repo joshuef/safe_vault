@@ -155,6 +155,17 @@ impl SectionFunds {
         sibling_key: Option<PublicKey>,
     ) -> Result<NodeMessagingDuty> {
         info!(">>> ??? Initiating transition to new section wallet...");
+
+        // Get all the tokens of current actor.
+        let current_balance = self.actor.balance();
+
+        debug!(">>>>************************");
+        debug!(">>>>************************");
+        debug!(">>>>************************");
+        debug!(">>>>************************");
+        debug!(">>>>************************");
+        debug!(">>>>************************ {:?}", current_balance);
+
         if !matches!(self.state.transition, Transition::None) {
             info!(">>> ??? has_initiated_transition");
             return Err(Error::Logic("Already initiated transition".to_string()));
@@ -246,6 +257,8 @@ impl SectionFunds {
                 debug!(">>>> ==================================");
                 debug!(">>>> ==================================");
                 debug!(">>>> ==================================");
+                let current_balance = self.actor.balance();
+                debug!(">>>> OUR SECTION BALANCE BEFOOOOOOORe {:?}", current_balance);
 
                 let next_actor = Self::get_actor(replicas, next_actor_state.to_owned())?;
                 let our_new_key = next_actor.id();

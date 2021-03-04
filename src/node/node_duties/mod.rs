@@ -541,13 +541,13 @@ impl NodeDuties {
         wallet_info: WalletInfo,
         genesis: Option<TransferPropagated>,
     ) -> Result<NetworkDuties> {
-        debug!(">>>>>>>>>>> Finishing transition to elder!!!");
+        debug!(">>>>>>>>>>> running through finish  transition to elder!!!");
         let queued_duties = &mut VecDeque::new();
 
         debug!("????");
         let queued_duties = match self.stage {
             Stage::Elder(_) => {
-                debug!("was already elder");
+                debug!(">>>> was already elder");
                 return Ok(vec![])
             },
             Stage::Infant => {
@@ -604,7 +604,6 @@ impl NodeDuties {
             origin: SrcLocation::Node(node_id),
         }));
 
-        debug!(">>>>>>>> ALLLLLLLMOST THERE");
         /// lets ignore rewards just now....
         // 5. Add own wallet to rewards.
         ops.push(NetworkDuty::from(RewardDuty::ProcessCmd {
@@ -615,7 +614,8 @@ impl NodeDuties {
             msg_id: MessageId::new(),
             origin: SrcLocation::Node(node_id),
         }));
-
+        
+        debug!(">>>>>>>> ALLLLLLLMOST THERE");
         Ok(ops)
     }
 

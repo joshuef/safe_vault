@@ -25,7 +25,7 @@ use sn_messaging::{
     Aggregation, DstLocation, MessageId,
 };
 use sn_transfers::{ActorEvent, TransferActor};
-use std::collections::{BTreeSet, VecDeque};
+use std::{collections::{BTreeSet, VecDeque}, str::FromStr};
 use xor_name::XorName;
 use ActorEvent::*;
 
@@ -234,14 +234,47 @@ impl SectionFunds {
                 next_actor_state,
                 sibling_key,
             }) => {
+                debug!(">>>> ==================================");
+                debug!(">>>> ==================================");
+                debug!(">>>> ==================================");
+                debug!(">>>> ==================================");
+                debug!(">>>> ==================================");
                 debug!(
                     ">>>> Split happening, we need to transfer to TWO wallets; one for each sibling"
                 );
+                debug!(">>>> ==================================");
+                debug!(">>>> ==================================");
+                debug!(">>>> ==================================");
+                debug!(">>>> ==================================");
+
                 let next_actor = Self::get_actor(replicas, next_actor_state.to_owned())?;
                 let our_new_key = next_actor.id();
 
                 // Get all the tokens of current actor.
                 let current_balance = self.actor.balance();
+
+                debug!(">>>> OUR SECTION BALANCE HERE {:?}", current_balance);
+
+                if current_balance == Token::from_nano(0)
+                {
+                    debug!(">>>>> NO MONEY YET OHOHOHHHHHHHHH");
+
+
+                    // return Ok(vec![RewardDuty::ProcessCmd {
+                    //     cmd: RewardCmd::CompleteTransition(replicas),
+                    //     msg_id: *id,
+                    //     origin,
+                    // }])
+
+                    return Ok(vec![])
+                }
+                else {
+                    debug!(">>>>>>>>> !!!!!!!!!! WE HAVE FUNDS TO SPLIT");
+                    debug!(">>>>>>>>> !!!!!!!!!! WE HAVE FUNDS TO SPLIT");
+                    debug!(">>>>>>>>> !!!!!!!!!! WE HAVE FUNDS TO SPLIT");
+                }
+
+
                 let half_balance = current_balance.as_nano() / 2;
                 let remainder = current_balance.as_nano() % 2;
 

@@ -27,13 +27,10 @@ use log::{debug, error, info, trace, warn};
 use replica_signing::ReplicaSigningImpl;
 #[cfg(feature = "simulated-payouts")]
 use sn_data_types::Transfer;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use futures::lock::Mutex;
-use sn_data_types::{
-    CreditAgreementProof, DebitId, PublicKey, ReplicaEvent, SignedTransfer, SignedTransferShare,
-    TransferAgreementProof, TransferPropagated,
-};
+use sn_data_types::{CreditAgreementProof, DebitId, PublicKey, ReplicaEvent, SignedTransfer, SignedTransferShare, TransferAgreementProof, TransferPropagated, TransferValidated};
 use sn_messaging::{
     client::{
         Cmd, CmdError, Error as ErrorMessage, Event, Message, NodeCmd, NodeCmdError, NodeEvent,
@@ -78,7 +75,7 @@ pub struct Transfers {
     replicas: Replicas<ReplicaSigningImpl>,
     rate_limit: RateLimit,
     // TODO: limit this? where do we store it
-    recently_validated_transfers: Arc<Mutex<HashSet<DebitId>>>,
+    recently_validated_transfers: Arc<Mutex<HashMap<DebitId, TransferValidated>>>,
 }
 
 impl Transfers {
@@ -574,7 +571,8 @@ impl Transfers {
     ) -> Result<NodeMessagingDuty> {
         debug!(">>>>> validatin....");
 
-        if let Some(id) = self
+        /// TODO: limit recently validated count
+        if let Some(event) = self
             .recently_validated_transfers
             .lock()
             .await
@@ -584,19 +582,33 @@ impl Transfers {
                 ">>>>>>>>> seen this transfer as valid already {:?} ",
                 transfer.id()
             );
-            // we've done this before so we can safely just return No op
-            return Ok(NodeMessagingDuty::NoOp);
+
+            // do we actually need to resend this here?
+
+            return Ok(NodeMessagingDuty::Send(OutgoingMsg {
+                msg: Message::NodeEvent {
+                    event: NodeEvent::SectionPayoutValidated(event.clone()),
+                    id: MessageId::new(),
+                    correlation_id: msg_id,
+                    target_section_pk: None,
+                },
+                dst: DstLocation::Section(origin.name()),
+                aggregation: Aggregation::None, // TODO: to_be_aggregated: Aggregation::AtDestination,
+            }))
+
+            // // we've done this before so we can safely just return No op
+            // return Ok(NodeMessagingDuty::NoOp);
         }
 
         match self.replicas.propose_validation(&transfer).await {
             Ok(None) => return Ok(NodeMessagingDuty::NoOp),
             Ok(Some(event)) => {
-                debug!(">>>>> is valid!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+                debug!(">>>>> transfer of {:?} is valid!!!!!!!!!!!!!!!!!!!!!!!!!!!", transfer.amount());
                 let _ = self
                     .recently_validated_transfers
                     .lock()
                     .await
-                    .insert(transfer.id());
+                    .insert(transfer.id(), event.clone());
                 Ok(NodeMessagingDuty::Send(OutgoingMsg {
                     msg: Message::NodeEvent {
                         event: NodeEvent::SectionPayoutValidated(event),
@@ -678,13 +690,18 @@ impl Transfers {
         msg_id: MessageId,
         origin: SrcLocation,
     ) -> Result<NetworkDuties> {
-        debug!(">>> registering section payout");
+        debug!(">>>> registering section payout!!!");
         use NodeCmd::*;
         use NodeEvent::*;
         use NodeTransferCmd::*;
         match self.replicas.register(proof).await {
             Ok(event) => {
                 debug!(">>> in match ok");
+
+
+                /// TODO: we need to handle erorr of already seen tx here....
+
+                
                 let mut ops: NetworkDuties = vec![];
                 // notify sending section
                 let location = event.transfer_proof.sender().into();

@@ -43,8 +43,7 @@ use sn_messaging::{
 };
 use std::collections::{BTreeMap, VecDeque};
 use GenesisStage::*;
-
-const GENESIS_ELDER_COUNT: usize = 3;
+use sn_routing::ELDER_SIZE;
 
 #[allow(clippy::large_enum_variant)]
 enum Stage {
@@ -308,11 +307,11 @@ impl NodeDuties {
             is_genesis_section, elder_count, section_chain_len
         );
         if is_genesis_section
-            && elder_count == GENESIS_ELDER_COUNT
+            && elder_count == ELDER_SIZE
             && matches!(self.stage, Stage::Adult(_))
-            && section_chain_len <= GENESIS_ELDER_COUNT
+            && section_chain_len <= ELDER_SIZE
         {
-            // this is the case when we are the GENESIS_ELDER_COUNT-th Elder!
+            // this is the case when we are the ELDER_SIZE-th Elder!
             debug!("threshold reached; proposing genesis!");
 
             let elder_state = ElderState::new(self.network_api.clone()).await?;
@@ -349,8 +348,8 @@ impl NodeDuties {
                 aggregation: Aggregation::None, // TODO: to_be_aggregated: Aggregation::AtDestination,
             })));
         } else if is_genesis_section
-            && elder_count < GENESIS_ELDER_COUNT
-            && section_chain_len <= GENESIS_ELDER_COUNT
+            && elder_count < ELDER_SIZE
+            && section_chain_len <= ELDER_SIZE
         {
             debug!("AwaitingGenesisThreshold!");
             self.stage = Stage::Genesis(AwaitingGenesisThreshold(VecDeque::new()));

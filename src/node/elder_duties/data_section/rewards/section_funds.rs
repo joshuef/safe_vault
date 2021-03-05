@@ -15,7 +15,7 @@ use crate::{
     ElderState, Error, Result,
 };
 use bls::PublicKeySet;
-use log::{debug, info};
+use log::{debug, info, error};
 use sn_data_types::{
     ActorHistory, CreditAgreementProof, PublicKey, SignedTransferShare, Token, TransferValidated,
     WalletInfo,
@@ -316,10 +316,54 @@ impl SectionFunds {
                 });
                 Ok(NetworkDuties::from(t1))
             }
-            Transition::Regular(TransitionStage::InTransition(_))
-            | Transition::Split(SplitStage::FinishingT1 { .. })
-            | Transition::Split(SplitStage::FinishingT2 { .. }) => {
-                debug!(">>>>> SOME OTHER STAGE");
+            Transition::Split(SplitStage::FinishingT1 { next_actor, t2 }) => {
+                debug!(">>>>>888888888888888888888");
+                debug!(">>>>>888888888888888888888");
+                debug!(">>>>>888888888888888888888");
+                debug!(">>>>>888888888888888888888");
+                debug!(">>>>>888888888888888888888");
+                debug!(">>>>>888888888888888888888");
+                debug!(">>>>> FINISHING t1 ");
+
+                // let recipient = t2.recipient;
+                // let amount = t2.amount;
+
+                // let the_transfer = self.generate_validation(amount, recipient)?;
+
+                // debug!(">>>> validation for t2 here...");
+                // self.state.transition = Transition::Split(SplitStage::FinishingT2 {
+                //     next_actor,
+                //     was_t1_ours: None // huh?
+                // });
+
+                // Ok(NetworkDuties::from(the_transfer))
+
+                // let next_actor = self.state.transition
+                // Err(Error::Logic("Undergoing transition already".to_string()))
+                Ok(vec![])
+
+            }
+            ,
+            Transition::Split(SplitStage::FinishingT2 { next_actor, was_t1_ours }) => {
+                debug!(">>>>>999999999");
+                debug!(">>>>>999999999");
+                debug!(">>>>>999999999");
+                debug!(">>>>>999999999");
+                debug!(">>>>>999999999");
+                debug!(">>>>>999999999");
+                debug!(">>>>> FINISHING t2 stage here,,, this should be handled w/ the receive section payout func");
+                // Err(Error::Logic("Undergoing transition already".to_string()))
+
+
+                // self.state.transition = Transition::None;
+
+                // self.state.transition =
+                //     Transition::Regular(TransitionStage::InTransition(next_actor));
+
+                Ok(vec![])
+            }
+            Transition::Regular(TransitionStage::InTransition(_))=> {
+                debug!(">>>>> Standard transition");
                 Err(Error::Logic("Undergoing transition already".to_string()))
             }
             Transition::None => {
@@ -460,16 +504,33 @@ impl SectionFunds {
         use NodeCmd::*;
         use NodeTransferCmd::*;
 
-        debug!(">>>>>>>>>>>>>> Receiving section funds");
-        if let Some(event) = self.actor.receive(validation)? {
+        debug!(">>>>>>>>>>>>>> ");
+        debug!(">>>>>>>>>>>>>> ");
+        debug!(">>>>>>>>>>>>>> ");
+        debug!(">>>>>>>>>>>>>> ");
+        debug!(">>>>>>>>>>>>>> Receiving section fundsof: {:?}", validation.amount());
+        let validated_event = match self.actor.receive(validation) {
+            Ok(event) => Ok(event),
+            Err(error) => {
+                error!("There was an error receiving funds {:?}", error);
+                Err(error)
+            }
+        }?;
+        if let Some(event) = validated_event {
+            debug!(">>>> ABOUT TO APPLY TRANSFER");
+
             self.apply(TransferValidationReceived(event.clone()))?;
+            debug!(">>>> APPLIED SUCCESSFULLY");
+
             let proof = if let Some(proof) = event.proof {
                 proof
             } else {
+                debug!(">>>> NAE PROOF");
                 return Ok(vec![]);
             };
             // If we have an accumulated proof, we'll continue with registering the proof.
             if let Some(event) = self.actor.register(proof.clone())? {
+                
                 self.apply(TransferRegistrationSent(event))?;
             };
 
@@ -543,6 +604,8 @@ impl SectionFunds {
             debug!(">>> registering");
             Ok(register_op)
         } else {
+
+            debug!(">>>>>>>> in the else at section");
             Ok(vec![])
         }
     }

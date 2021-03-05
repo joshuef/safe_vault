@@ -555,6 +555,10 @@ impl<T: ReplicaSigning> Replicas<T> {
             wallet.apply(event.clone())?;
             // see if any agreement accumulated
             if let Some(agreed_transfer) = proposal.agreed_transfer {
+                debug!(">>>> !!!!!!!!!!!!");
+                debug!(">>>> Transfer AGREEEEEEED!");
+                debug!(">>>> !!!!!!!!!!!!");
+
                 let (replica_debit_sig, replica_credit_sig) =
                     self.info.signing.sign_transfer(&agreed_transfer).await?;
                 let event = TransferValidated {

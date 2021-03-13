@@ -20,7 +20,6 @@ use crate::{
     capacity::ChunkHolderDbs,
     node::node_ops::{MetadataDuty, NodeDuties},
     node::NodeInfo,
-    node::RewardsAndWallets,
     Network, Result,
 };
 use blob_register::BlobRegister;

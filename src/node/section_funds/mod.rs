@@ -87,7 +87,6 @@ pub fn query_for_replicas(wallet: PublicKey) -> NodeDuty {
 // /// Transition the section funds account to the new key.
 // pub async fn initiate_elder_change(
 //     &mut self,
-//     rewards_and_wallets: RewardsAndWallets,
 //     sibling_key: Option<PublicKey>,
 // ) -> Result<NetworkDuties> {
 //     info!(">> Processing Elder change in data section");

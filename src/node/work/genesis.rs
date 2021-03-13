@@ -52,7 +52,6 @@ pub async fn begin_forming_genesis_section(network_api: Network) -> Result<Genes
         // this is the case when we are the GENESIS_ELDER_COUNT-th Elder!
         debug!("**********threshold reached; proposing genesis!");
 
-        // let rewards_and_wallets = RewardsAndWallets::new(network_api.clone()).await?;
         let genesis_balance = u32::MAX as u64 * 1_000_000_000;
         let credit = Credit {
             id: Default::default(),

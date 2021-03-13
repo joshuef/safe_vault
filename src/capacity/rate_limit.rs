@@ -7,11 +7,7 @@
 // permissions and limitations relating to use of the SAFE Network Software.
 
 use crate::Network;
-use crate::{
-    capacity::Capacity,
-    // RewardsAndWallets,
-    Result,
-};
+use crate::{capacity::Capacity, Result};
 use log::info;
 use sn_data_types::{PublicKey, Token};
 const MAX_CHUNK_SIZE: u64 = 1_000_000;
@@ -21,18 +17,13 @@ const MAX_NETWORK_STORAGE_RATIO: f64 = 0.5;
 /// Calculation of rate limit for writes.
 #[derive(Clone)]
 pub struct RateLimit {
-    // rewards_and_wallets: RewardsAndWallets,
     capacity: Capacity,
     network: Network,
 }
 
 impl RateLimit {
     /// gets a new instance of rate limit
-    pub fn new(
-        network: Network,
-        // rewards_and_wallets: RewardsAndWallets,
-        capacity: Capacity,
-    ) -> RateLimit {
+    pub fn new(network: Network, capacity: Capacity) -> RateLimit {
         Self {
             network,
             // rewards_and_wallets,

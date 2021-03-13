@@ -77,23 +77,6 @@ impl NodeInfo {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct RewardsAndWallets {
-    pub section_wallet: Arc<Mutex<WalletInfo>>,
-    pub node_rewards: Arc<Mutex<BTreeMap<XorName, NodeRewardStage>>>,
-    pub user_wallets: Arc<Mutex<BTreeMap<PublicKey, ActorHistory>>>,
-}
-
-impl RewardsAndWallets {
-    fn new(section_wallet: WalletInfo) -> Self {
-        Self {
-            section_wallet: Arc::new(Mutex::new(section_wallet)),
-            node_rewards: Default::default(),
-            user_wallets: Default::default(),
-        }
-    }
-}
-
 /// Main node struct.
 pub struct Node {
     network_api: Network,

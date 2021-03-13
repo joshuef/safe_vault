@@ -6,26 +6,37 @@
 // KIND, either express or implied. Please review the Licences for the specific language governing
 // permissions and limitations relating to use of the SAFE Network Software.
 
-use super::node_ops::{NodeDuties, NodeDuty};
-use crate::{node::handle_msg::handle, Network, Result};
+use crate::{node::handle_msg::handle, Network, Result, Storage};
 use hex_fmt::HexFmt;
-use log::{debug, info, trace};
+use log::{debug, error, info, trace};
 use sn_data_types::PublicKey;
 use sn_messaging::{client::Message, DstLocation, SrcLocation};
 use sn_routing::{Event as RoutingEvent, EventStream, NodeElderChange, MIN_AGE};
 use sn_routing::{Prefix, XorName, ELDER_SIZE as GENESIS_ELDER_COUNT};
 
 /// Process any routing event
-pub async fn handle_network_event(event: RoutingEvent, network_api: Network) -> Result<NodeDuties> {
+pub async fn handle_network_event(
+    event: RoutingEvent,
+    network: Network,
+    mut storage: Storage,
+) -> Result<()> {
     trace!("Processing Routing Event: {:?}", event);
-    match event {
-        RoutingEvent::Genesis => Ok(vec![NodeDuty::BeginFormingGenesisSection]),
+    let result = match event {
+        RoutingEvent::Genesis => {
+            storage
+                .begin_forming_genesis_section(network.clone(), storage.clone())
+                .await?;
+            Ok(())
+        }
         RoutingEvent::MemberLeft { name, age } => {
             debug!("A node has left the section. Node: {:?}", name);
-            Ok(vec![NodeDuty::ProcessLostMember {
-                name: XorName(name.0),
-                age,
-            }])
+            // TODO
+
+            // Ok(vec![NodeDuty::ProcessLostMember {
+            //     name: XorName(name.0),
+            //     age,
+            // }])
+            Ok(())
         }
         RoutingEvent::MemberJoined {
             name,
@@ -33,10 +44,11 @@ pub async fn handle_network_event(event: RoutingEvent, network_api: Network) -> 
             age,
             ..
         } => {
-            if is_forming_genesis(network_api).await {
+            if is_forming_genesis(network).await {
                 // during formation of genesis we do not process this event
                 debug!("Forming genesis so ignore new member");
-                return Ok(vec![]);
+                // return Ok(vec![]);
+                return Ok(());
             }
 
             info!("New member has joined the section");
@@ -44,19 +56,20 @@ pub async fn handle_network_event(event: RoutingEvent, network_api: Network) -> 
             //self.log_node_counts().await;
             if let Some(prev_name) = previous_name {
                 trace!("The new member is a Relocated Node");
-                let first = NodeDuty::ProcessRelocatedMember {
-                    old_node_id: XorName(prev_name.0),
-                    new_node_id: XorName(name.0),
-                    age,
-                };
+                // let first = NodeDuty::ProcessRelocatedMember {
+                //     old_node_id: XorName(prev_name.0),
+                //     new_node_id: XorName(name.0),
+                //     age,
+                // };
 
                 // Switch joins_allowed off a new adult joining.
                 //let second = NetworkDuty::from(SwitchNodeJoin(false));
-                Ok(vec![first]) // , second
+                // Ok(vec![first]) // , second
             } else {
                 //trace!("New node has just joined the network and is a fresh node.",);
-                Ok(vec![NodeDuty::ProcessNewMember(XorName(name.0))])
+                // Ok(vec![NodeDuty::ProcessNewMember(XorName(name.0))])
             }
+            Ok(())
         }
         RoutingEvent::ClientMessageReceived { msg, user } => {
             info!(
@@ -66,7 +79,9 @@ pub async fn handle_network_event(event: RoutingEvent, network_api: Network) -> 
             handle(
                 *msg,
                 SrcLocation::EndUser(user),
-                DstLocation::Node(network_api.our_name().await),
+                DstLocation::Node(network.our_name().await),
+                storage,
+                network,
             )
             .await
         }
@@ -77,7 +92,7 @@ pub async fn handle_network_event(event: RoutingEvent, network_api: Network) -> 
                 src,
                 dst
             );
-            handle(Message::from(content)?, src, dst).await
+            handle(Message::from(content)?, src, dst, storage, network.clone()).await
             // ERR -> LAZY
         }
         RoutingEvent::EldersChanged {
@@ -102,39 +117,51 @@ pub async fn handle_network_event(event: RoutingEvent, network_api: Network) -> 
                     // }));
 
                     // Ok(duties)
-                    Ok(vec![])
+                    // Ok(vec![])
+                    Ok(())
                 }
                 NodeElderChange::Promoted => {
-                    if is_forming_genesis(network_api).await {
-                        return Ok(vec![NodeDuty::BeginFormingGenesisSection]);
+                    if is_forming_genesis(network.clone()).await {
+                        storage
+                            .begin_forming_genesis_section(network.clone(), storage.clone())
+                            .await
                     } else {
-                        return Ok(vec![NodeDuty::LevelUp]);
+                        storage.level_up(None).await
                     }
                 }
-                NodeElderChange::Demoted => return Ok(vec![NodeDuty::LevelDown]),
+                NodeElderChange::Demoted => {
+                    storage.level_down();
+                    Ok(())
+                }
             }
         }
         RoutingEvent::Relocated { .. } => {
             // Check our current status
-            let age = network_api.age().await;
+            let age = network.age().await;
             if age > MIN_AGE {
                 info!("Node promoted to Adult");
                 info!("Our Age: {:?}", age);
                 // return Ok(())
                 // Ok(NetworkDuties::from(NodeDuty::AssumeAdultDuties))
             }
-            Ok(vec![])
+            Ok(())
         }
         // Ignore all other events
-        _ => Ok(vec![]),
+        _ => Ok(()),
+    };
+
+    if result.is_err() {
+        error!("Error handling network event: {:?}", result)
     }
+
+    result
 }
 
 /// Are we forming the genesis?
-async fn is_forming_genesis(network_api: Network) -> bool {
-    let is_genesis_section = network_api.our_prefix().await.is_empty();
-    let elder_count = network_api.our_elder_names().await.len();
-    let section_chain_len = network_api.section_chain().await.len();
+async fn is_forming_genesis(network: Network) -> bool {
+    let is_genesis_section = network.our_prefix().await.is_empty();
+    let elder_count = network.our_elder_names().await.len();
+    let section_chain_len = network.section_chain().await.len();
     is_genesis_section
         && elder_count <= GENESIS_ELDER_COUNT
         && section_chain_len <= GENESIS_ELDER_COUNT

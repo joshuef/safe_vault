@@ -16,12 +16,7 @@ mod writing;
 
 use self::adult_reader::SomethingThatShouldBeQueriedFromRoutingAdultReader;
 use super::node_ops::NodeDuty;
-use crate::{
-    capacity::ChunkHolderDbs,
-    node::node_ops::{MetadataDuty, NodeDuties},
-    node::NodeInfo,
-    Network, Result,
-};
+use crate::{capacity::ChunkHolderDbs, node::node_ops::NodeDuties, node::Storage, Network, Result};
 use blob_register::BlobRegister;
 use data_stores::DataStores;
 use map_storage::MapStorage;
@@ -46,7 +41,7 @@ pub struct Metadata {
 
 impl Metadata {
     pub async fn new(
-        node_info: &NodeInfo,
+        node_info: &Storage,
         dbs: ChunkHolderDbs,
         reader: SomethingThatShouldBeQueriedFromRoutingAdultReader,
     ) -> Result<Self> {

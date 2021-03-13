@@ -10,7 +10,7 @@ use crate::{
     chunk_store::MapChunkStore,
     error::convert_to_error_message,
     node::node_ops::{NodeDuty, NodeMessagingDuty, OutgoingMsg},
-    node::NodeInfo,
+    node::Storage,
     Error, Network, Result,
 };
 use log::info;
@@ -32,7 +32,7 @@ pub(super) struct MapStorage {
 }
 
 impl MapStorage {
-    pub(super) async fn new(node_info: &NodeInfo) -> Result<Self> {
+    pub(super) async fn new(node_info: &Storage) -> Result<Self> {
         let chunks = MapChunkStore::new(node_info.path(), node_info.used_space.clone()).await?;
         Ok(Self { chunks })
     }

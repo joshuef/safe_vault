@@ -6,13 +6,14 @@
 // KIND, either express or implied. Please review the Licences for the specific language governing
 // permissions and limitations relating to use of the SAFE Network Software.
 
+mod genesis;
 mod handle_msg;
 mod handle_network_event;
 mod messaging;
 mod metadata;
 mod section_funds;
+pub mod storage;
 mod transfers;
-mod work;
 
 pub(crate) mod node_ops;
 pub mod state_db;
@@ -41,6 +42,8 @@ use std::{
 };
 
 use self::{
+    genesis::genesis_stage::GenesisStage,
+    // storage::Storage,
     handle_msg::handle,
     handle_network_event::handle_network_event,
     messaging::send,
@@ -51,51 +54,14 @@ use self::{
     state_db::store_new_reward_keypair,
     transfers::get_replicas::transfer_replicas,
     transfers::Transfers,
-    work::{
-        genesis::begin_forming_genesis_section, genesis::receive_genesis_accumulation,
-        genesis::receive_genesis_proposal, genesis_stage::GenesisStage,
-    },
 };
 
-/// Info about the node.
-#[derive(Clone)]
-pub struct NodeInfo {
-    ///
-    pub genesis: bool,
-    ///
-    pub root_dir: PathBuf,
-    ///
-    pub used_space: UsedSpace,
-    /// The key used by the node to receive earned rewards.
-    pub reward_key: PublicKey,
-
-    prefix: Option<Prefix>,
-    node_name: XorName,
-    node_id: Ed25519PublicKey,
-    genesis_stage: GenesisStage,
-
-    // TODO: ensure cloning of these has no adverse affects. Are we Arc all over?
-
-    // data operations
-    meta_data: Option<Metadata>,
-    // transfers
-    transfers: Option<Transfers>,
-    // reward payouts
-    section_funds: Option<SectionFunds>,
-}
-
-impl NodeInfo {
-    ///
-    pub fn path(&self) -> &Path {
-        self.root_dir.as_path()
-    }
-}
-
+pub use storage::Storage;
 /// Main node struct.
 pub struct Node {
-    network_api: Network,
+    network: Network,
     network_events: EventStream,
-    node_info: NodeInfo,
+    storage: Storage,
 }
 
 impl Node {
@@ -126,30 +92,28 @@ impl Node {
 
         let reward_key = reward_key_task?;
         debug!("NEW NODE after reward key");
-        let (network_api, network_events) = Network::new(config).await?;
+        let (network, network_events) = Network::new(config).await?;
 
         // TODO: This should be general setup tbh..
 
-        let node_info = NodeInfo {
+        let storage = Storage {
             genesis: config.is_first(),
             root_dir: root_dir_buf,
             used_space: UsedSpace::new(config.max_capacity()),
             reward_key,
-            // wallet_section
-            prefix: Some(network_api.our_prefix().await),
-            node_name: network_api.our_name().await,
-            node_id: network_api.public_key().await,
-            genesis_stage: GenesisStage::None,
-            meta_data: None,
-            transfers: None,
-            section_funds: None,
+            genesis_stage: Arc::new(Mutex::new(GenesisStage::None)),
+            meta_data: Arc::new(Mutex::new(None)),
+            transfers: Arc::new(Mutex::new(None)),
+            section_funds: Arc::new(Mutex::new(None)),
+
+            network: network.clone(),
         };
 
         debug!("NEW NODE after messaging");
 
         let node = Self {
-            node_info,
-            network_api,
+            storage,
+            network,
             network_events,
         };
 
@@ -158,161 +122,28 @@ impl Node {
 
     /// Returns our connection info.
     pub async fn our_connection_info(&mut self) -> SocketAddr {
-        self.network_api.our_connection_info().await
+        self.network.our_connection_info().await
     }
 
     /// Returns whether routing node is in elder state.
     pub async fn is_elder(&self) -> bool {
-        self.network_api.is_elder().await
+        self.network.is_elder().await
     }
 
     /// Starts the node, and runs the main event loop.
     /// Blocks until the node is terminated, which is done
     /// by client sending in a `Command` to free it.
-    pub async fn run(&mut self) -> Result<()> {
+    pub async fn run(mut self) -> Result<()> {
         // TODO: setup all the bits we need here:
 
-        //let info = self.network_api.our_connection_info().await;
-        //info!("Listening for routing events at: {}", info);
+        let info = self.network.our_connection_info().await;
+        info!("Listening for routing events at: {}", info);
         while let Some(event) = self.network_events.next().await {
-            // tokio spawn should only be needed around intensive tasks, ie sign/verify
-            let node_duties = handle_network_event(event, self.network_api.clone()).await;
-            self.process_while_any(node_duties).await;
+            let join_handle = tokio::spawn(
+                handle_network_event(event, self.network.clone(), self.storage.clone()), // self.process_while_any(node_duties).await;
+            );
         }
 
-        Ok(())
-    }
-
-    /// Keeps processing resulting node operations.
-    async fn process_while_any(&mut self, ops_vec: Result<NodeDuties>) {
-        let mut next_ops = ops_vec;
-
-        while let Ok(ops) = next_ops {
-            let mut pending_node_ops = Vec::new();
-
-            if !ops.is_empty() {
-                for duty in ops {
-                    match self.handle_node_duty(duty).await {
-                        Ok(new_ops) => pending_node_ops.extend(new_ops),
-                        Err(e) => self.handle_error(&e),
-                    };
-                }
-                next_ops = Ok(pending_node_ops);
-            } else {
-                break;
-            }
-        }
-    }
-
-    async fn handle_node_duty(&mut self, duty: NodeDuty) -> Result<NodeDuties> {
-        match duty {
-            NodeDuty::GetSectionElders { msg_id, origin } => {}
-            NodeDuty::BeginFormingGenesisSection => {
-                self.node_info.genesis_stage =
-                    begin_forming_genesis_section(self.network_api.clone()).await?;
-            }
-            NodeDuty::ReceiveGenesisProposal { credit, sig } => {
-                self.node_info.genesis_stage = receive_genesis_proposal(
-                    credit,
-                    sig,
-                    self.node_info.genesis_stage.clone(),
-                    self.network_api.clone(),
-                )
-                .await?;
-            }
-            NodeDuty::ReceiveGenesisAccumulation { signed_credit, sig } => {
-                self.node_info.genesis_stage = receive_genesis_accumulation(
-                    signed_credit,
-                    sig,
-                    self.node_info.genesis_stage.clone(),
-                    self.network_api.clone(),
-                )
-                .await?;
-                let genesis_tx = match &self.node_info.genesis_stage {
-                    GenesisStage::Completed(genesis_tx) => genesis_tx.clone(),
-                    _ => return Ok(vec![]),
-                };
-                self.level_up(Some(genesis_tx)).await?;
-            }
-            NodeDuty::LevelUp => {
-                self.level_up(None).await?;
-            }
-            NodeDuty::LevelDown => {
-                self.node_info.meta_data = None;
-                self.node_info.transfers = None;
-                self.node_info.section_funds = None;
-            }
-            NodeDuty::AssumeAdultDuties => {}
-            NodeDuty::UpdateElderInfo {
-                prefix,
-                key,
-                elders,
-                sibling_key,
-            } => {}
-            NodeDuty::CompleteElderChange {
-                previous_key,
-                new_key,
-            } => {}
-            NodeDuty::InformNewElders => {}
-            NodeDuty::CompleteTransitionToElder {
-                section_wallet,
-                node_rewards,
-                user_wallets,
-            } => {}
-            NodeDuty::ProcessNewMember(_) => {}
-            NodeDuty::ProcessLostMember { name, age } => {}
-            NodeDuty::ProcessRelocatedMember {
-                old_node_id,
-                new_node_id,
-                age,
-            } => {}
-            NodeDuty::ReachingMaxCapacity => {}
-            NodeDuty::IncrementFullNodeCount { node_id } => {}
-            NodeDuty::SwitchNodeJoin(_) => {}
-            NodeDuty::Send(msg) => send(msg, self.network_api.clone()).await?,
-            NodeDuty::SendToNodes { targets, msg } => {
-                send_to_nodes(targets, &msg, self.network_api.clone()).await?
-            }
-            NodeDuty::ProcessRead { query, id, origin } => {
-                if let Some(ref meta_data) = self.node_info.meta_data {
-                    return Ok(vec![meta_data.read(query, id, origin).await?]);
-                }
-            }
-            NodeDuty::ProcessWrite { cmd, id, origin } => {
-                if let Some(ref mut meta_data) = self.node_info.meta_data {
-                    return Ok(vec![meta_data.write(cmd, id, origin).await?]);
-                }
-            }
-            NodeDuty::NoOp => {}
-        }
-        Ok(vec![])
-    }
-
-    async fn level_up(&mut self, genesis_tx: Option<TransferPropagated>) -> Result<()> {
-        // metadata
-        let dbs = ChunkHolderDbs::new(self.node_info.path())?;
-        let reader =
-            SomethingThatShouldBeQueriedFromRoutingAdultReader::new(self.network_api.clone());
-        let meta_data = Metadata::new(&self.node_info, dbs, reader).await?;
-        self.node_info.meta_data = Some(meta_data);
-
-        // transfers
-        let dbs = ChunkHolderDbs::new(self.node_info.root_dir.as_path())?;
-        let rate_limit = RateLimit::new(self.network_api.clone(), Capacity::new(dbs.clone()));
-        let user_wallets = BTreeMap::<PublicKey, ActorHistory>::new();
-        let replicas =
-            transfer_replicas(&self.node_info, self.network_api.clone(), user_wallets).await?;
-        let transfers = Transfers::new(replicas, rate_limit);
-        // does local init, with no roundrip via network messaging
-        if let Some(genesis_tx) = genesis_tx {
-            transfers.genesis(genesis_tx.clone()).await?;
-        }
-        self.node_info.transfers = Some(transfers);
-
-        // rewards
-        // let actor = TransferActor::from_info(signing, reward_data.section_wallet, Validator {})?;
-        // let wallet = RewardingWallet::new(actor);
-        // self.section_funds = Some(SectionFunds::Rewarding(wallet));
         Ok(())
     }
 

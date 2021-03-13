@@ -20,7 +20,7 @@ use self::{
 use crate::{
     capacity::RateLimit,
     error::{convert_dt_error_to_error_message, convert_to_error_message},
-    node::node_ops::{NodeDuties, NodeDuty, OutgoingMsg, TransferCmd, TransferDuty, TransferQuery},
+    node::node_ops::{NodeDuties, NodeDuty, OutgoingMsg, TransferCmd, TransferQuery},
     utils, Error, Result,
 };
 use log::{debug, error, info, trace, warn};
@@ -115,26 +115,6 @@ impl Transfers {
     ///
     pub async fn increase_full_node_count(&mut self, node_id: PublicKey) -> Result<()> {
         self.rate_limit.increase_full_node_count(node_id).await
-    }
-
-    /// When handled by Elders in the dst
-    /// section, the actual business logic is executed.
-    pub async fn process_transfer_duty(&self, duty: &TransferDuty) -> Result<NodeDuties> {
-        //trace!("Processing transfer duty");
-        use TransferDuty::*;
-        match duty {
-            ProcessQuery {
-                query,
-                msg_id,
-                origin,
-            } => self.process_query(query, *msg_id, *origin).await,
-            ProcessCmd {
-                cmd,
-                msg_id,
-                origin,
-            } => self.process_cmd(cmd, *msg_id, *origin).await,
-            NoOp => Ok(vec![]),
-        }
     }
 
     async fn process_query(

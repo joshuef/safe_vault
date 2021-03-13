@@ -46,8 +46,6 @@ pub type NetworkDuties = Vec<NetworkDuty>;
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
 pub enum NetworkDuty {
-    RunAsAdult(AdultDuty),
-    RunAsElder(ElderDuty),
     RunAsNode(NodeDuty),
     NoOp,
 }
@@ -57,101 +55,12 @@ pub enum NetworkDuty {
 /// Common duties run by all nodes.
 #[allow(clippy::large_enum_variant)]
 pub enum NodeDuty {
-    /// Get section elders.
-    GetSectionElders {
-        msg_id: MessageId,
-        origin: SrcLocation,
-    },
-    /// On being promoted, an Adult node becomes an Elder.
-    BeginFormingGenesisSection,
-    /// Bootstrap of genesis section actor.
-    ReceiveGenesisProposal {
-        /// The genesis credit.
-        credit: Credit,
-        /// An individual elder's sig over the credit.
-        sig: SignatureShare,
-    },
-    /// Bootstrap of genesis section actor.
-    ReceiveGenesisAccumulation {
-        /// The genesis credit.
-        signed_credit: SignedCredit,
-        /// An individual elder's sig over the credit.
-        sig: SignatureShare,
-    },
-    /// On being promoted, an Infant node becomes an Adult.
-    AssumeAdultDuties,
-    /// Elder changes means the section public key
-    /// changes as well, which leads to necessary updates
-    /// of various places using the multisig of the section.
-    UpdateElderInfo {
-        /// The prefix of our section.
-        prefix: Prefix,
-        /// The BLS public key of our section.
-        key: PublicKey,
-        /// The set of elders of our section.
-        elders: BTreeSet<XorName>,
-        /// Sibling section PK if a split is underway
-        sibling_key: Option<PublicKey>,
-    },
-    /// Finishes the multi-step process
-    /// of transitioning to a new elder constellation.
-    CompleteElderChange {
-        /// The previous section key.
-        previous_key: PublicKey,
-        /// The new section key.
-        new_key: PublicKey,
-    },
-    InformNewElders,
-    /// When promoted, node levels up
-    LevelUp,
-    /// When demoted, node levels down
-    LevelDown,
-    /// Initiates the section wallet.
-    CompleteTransitionToElder {
-        section_wallet: WalletInfo,
-        node_rewards: BTreeMap<XorName, NodeRewardStage>,
-        user_wallets: BTreeMap<PublicKey, ActorHistory>,
-    },
-    ProcessNewMember(XorName),
-    /// As members are lost for various reasons
-    /// there are certain things the Elders need
-    /// to do, to update for that.
-    ProcessLostMember {
-        name: XorName,
-        age: u8,
-    },
-    ProcessRelocatedMember {
-        /// The id of the node at the previous section.
-        old_node_id: XorName,
-        /// The id of the node at its new section (i.e. this one).
-        new_node_id: XorName,
-        // The age of the node (among things determines if it is eligible for rewards yet).
-        age: u8,
-    },
-    /// Storage reaching max capacity.
-    ReachingMaxCapacity,
-    /// Increment count of full nodes in the network
-    IncrementFullNodeCount {
-        /// Node ID of node that reached max capacity.
-        node_id: PublicKey,
-    },
-    SwitchNodeJoin(bool),
     /// Send a message to the specified dst.
     Send(OutgoingMsg),
     /// Send the same request to each individual node.
     SendToNodes {
         targets: BTreeSet<XorName>,
         msg: Message,
-    },
-    ProcessRead {
-        query: sn_messaging::client::DataQuery,
-        id: MessageId,
-        origin: EndUser,
-    },
-    ProcessWrite {
-        cmd: sn_messaging::client::DataCmd,
-        id: MessageId,
-        origin: EndUser,
     },
     NoOp,
 }
@@ -169,30 +78,11 @@ impl From<NodeDuty> for NodeDuties {
 impl Debug for NodeDuty {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::LevelUp => write!(f, "LevelUp"),
-            Self::LevelDown => write!(f, "LevelDown"),
-            Self::InformNewElders => write!(f, "InformNewElders"),
-            Self::GetSectionElders { .. } => write!(f, "GetSectionElders"),
-            Self::ReceiveGenesisProposal { .. } => write!(f, "ReceiveGenesisProposal"),
-            Self::ReceiveGenesisAccumulation { .. } => write!(f, "ReceiveGenesisAccumulation"),
-            Self::AssumeAdultDuties => write!(f, "AssumeAdultDuties"),
-            Self::BeginFormingGenesisSection => write!(f, "BeginFormingGenesisSection"),
-            Self::CompleteTransitionToElder { .. } => write!(f, "CompleteTransitionToElder"),
             Self::NoOp => write!(f, "No op."),
-            Self::ReachingMaxCapacity => write!(f, "ReachingMaxCapacity"),
-            Self::UpdateElderInfo { .. } => write!(f, "UpdateElderInfo"),
-            Self::CompleteElderChange { .. } => write!(f, "CompleteElderChange"),
-            Self::ProcessNewMember(_) => write!(f, "ProcessNewMember"),
-            Self::ProcessLostMember { .. } => write!(f, "ProcessLostMember"),
-            Self::ProcessRelocatedMember { .. } => write!(f, "ProcessRelocatedMember"),
-            Self::IncrementFullNodeCount { .. } => write!(f, "IncrementFullNodeCount"),
-            Self::SwitchNodeJoin(_) => write!(f, "SwitchNodeJoin"),
             Self::Send(msg) => write!(f, "Send [ msg: {:?} ]", msg),
             Self::SendToNodes { targets, msg } => {
                 write!(f, "SendToNodes [ targets: {:?}, msg: {:?} ]", targets, msg)
             }
-            Self::ProcessRead { .. } => write!(f, "ProcessRead"),
-            Self::ProcessWrite { .. } => write!(f, "ProcessWrite"),
         }
     }
 }
@@ -230,212 +120,6 @@ impl Debug for NodeMessagingDuty {
     }
 }
 
-// --------------- Adult ---------------
-
-/// Duties only run as an Adult.
-#[derive(Debug)]
-pub enum AdultDuty {
-    /// The main duty of an Adult is
-    /// storage and retrieval of data chunks.
-    RunAsChunkStore(ChunkStoreDuty),
-    RunAsChunkReplication(ChunkReplicationDuty),
-    NoOp,
-}
-
-impl From<AdultDuty> for NetworkDuties {
-    fn from(duty: AdultDuty) -> Self {
-        use NetworkDuty::*;
-        if matches!(duty, AdultDuty::NoOp) {
-            vec![]
-        } else {
-            vec![RunAsAdult(duty)]
-        }
-    }
-}
-
-impl From<AdultDuty> for NetworkDuty {
-    fn from(duty: AdultDuty) -> Self {
-        use NetworkDuty::*;
-        RunAsAdult(duty)
-    }
-}
-
-// --------------- Elder ---------------
-
-/// Duties only run as an Elder.
-#[allow(clippy::large_enum_variant)]
-#[derive(Debug)]
-pub enum ElderDuty {
-    ProcessNewMember(XorName),
-    /// As members are lost for various reasons
-    /// there are certain things the Elders need
-    /// to do, to update for that.
-    ProcessLostMember {
-        name: XorName,
-        age: u8,
-    },
-    ProcessRelocatedMember {
-        /// The id of the node at the previous section.
-        old_node_id: XorName,
-        /// The id of the node at its new section (i.e. this one).
-        new_node_id: XorName,
-        // The age of the node (among things determines if it is eligible for rewards yet).
-        age: u8,
-    },
-    /// A key section interfaces with clients.
-    RunAsKeySection(KeySectionDuty),
-    /// A data section receives requests relayed
-    /// via key sections.
-    RunAsDataSection(DataSectionDuty),
-    NoOp,
-    /// Increase number of Full Nodes in the network
-    StorageFull {
-        /// Node ID of node that reached max capacity.
-        node_id: PublicKey,
-    },
-    SwitchNodeJoin(bool),
-}
-
-impl From<ElderDuty> for NetworkDuties {
-    fn from(duty: ElderDuty) -> Self {
-        use NetworkDuty::*;
-        if matches!(duty, ElderDuty::NoOp) {
-            vec![]
-        } else {
-            vec![RunAsElder(duty)]
-        }
-    }
-}
-
-impl From<ElderDuty> for NetworkDuty {
-    fn from(duty: ElderDuty) -> Self {
-        use NetworkDuty::*;
-        RunAsElder(duty)
-    }
-}
-
-// --------------- KeySection ---------------
-
-/// Duties only run as a Key section.
-#[derive(Debug)]
-pub enum KeySectionDuty {
-    /// Transfers of tokens between keys, hence also payment for data writes.
-    RunAsTransfers(TransferDuty),
-    NoOp,
-}
-
-impl From<KeySectionDuty> for NetworkDuties {
-    fn from(duty: KeySectionDuty) -> Self {
-        use ElderDuty::*;
-        use NetworkDuty::*;
-        if matches!(duty, KeySectionDuty::NoOp) {
-            vec![]
-        } else {
-            vec![RunAsElder(RunAsKeySection(duty))]
-        }
-    }
-}
-
-// --------------- DataSection ---------------
-
-/// Duties only run as a Data section.
-#[derive(Debug)]
-#[allow(clippy::large_enum_variant)]
-pub enum DataSectionDuty {
-    /// Metadata is the info about
-    /// data types structures, ownership
-    /// and permissions. This is distinct
-    /// from the actual data, that is in chunks.
-    /// NB: Full separation between metadata and chunks is not yet implemented.
-    RunAsMetadata(MetadataDuty),
-    /// Dealing out rewards for contributing to
-    /// the network by storing metadata / data, and
-    /// carrying out operations on those.
-    RunAsRewards(RewardDuty),
-    NoOp,
-}
-
-// --------------- Metadata ---------------
-
-/// Reading and writing data.
-/// The reads/writes potentially concerns
-/// metadata only, but could include
-/// chunks, and are then relayed to
-/// Adults (i.e. chunk holders).
-#[derive(Debug)]
-#[allow(clippy::large_enum_variant)]
-pub enum MetadataDuty {
-    /// Reads.
-    ProcessRead {
-        query: sn_messaging::client::DataQuery,
-        id: MessageId,
-        origin: EndUser,
-    },
-    /// Writes.
-    ProcessWrite {
-        cmd: sn_messaging::client::DataCmd,
-        id: MessageId,
-        origin: EndUser,
-    },
-    NoOp,
-}
-
-impl From<MetadataDuty> for NetworkDuties {
-    fn from(duty: MetadataDuty) -> Self {
-        use DataSectionDuty::*;
-        use ElderDuty::*;
-        use NetworkDuty::*;
-        if matches!(duty, MetadataDuty::NoOp) {
-            vec![]
-        } else {
-            vec![RunAsElder(RunAsDataSection(RunAsMetadata(duty)))]
-        }
-    }
-}
-
-// --------------- Chunks ---------------
-
-/// Chunk storage and retrieval is done at Adults.
-#[derive(Debug)]
-#[allow(clippy::large_enum_variant)]
-pub enum ChunkStoreDuty {
-    /// Reads.
-    ReadChunk {
-        read: sn_messaging::client::BlobRead,
-        id: MessageId,
-        origin: EndUser,
-    },
-    /// Writes.
-    WriteChunk {
-        write: sn_messaging::client::BlobWrite,
-        id: MessageId,
-        origin: EndUser,
-    },
-    NoOp,
-}
-
-/// Chunk storage and retrieval is done at Adults.
-#[derive(Debug)]
-pub enum ChunkReplicationDuty {
-    ///
-    ProcessCmd {
-        cmd: ChunkReplicationCmd,
-        ///
-        msg_id: MessageId,
-        // ///
-        origin: SrcLocation,
-    },
-    ///
-    ProcessQuery {
-        query: ChunkReplicationQuery,
-        ///
-        msg_id: MessageId,
-        // ///
-        origin: SrcLocation,
-    },
-    NoOp,
-}
-
 /// Queries for chunk to replicate
 #[derive(Debug)]
 pub enum ChunkReplicationQuery {
@@ -462,33 +146,6 @@ pub enum ChunkReplicationCmd {
 }
 
 // --------------- Rewards ---------------
-
-/// Nodes participating in the system are
-/// rewarded for their work.
-/// Elders are responsible for the duties of
-/// keeping track of rewards, and issuing
-/// payouts from the section account.
-#[allow(clippy::large_enum_variant)]
-#[derive(Debug)]
-pub enum RewardDuty {
-    ///
-    ProcessQuery {
-        query: RewardQuery,
-        ///
-        msg_id: MessageId,
-        ///
-        origin: SrcLocation,
-    },
-    ///
-    ProcessCmd {
-        cmd: RewardCmd,
-        ///
-        msg_id: MessageId,
-        ///
-        origin: SrcLocation,
-    },
-    NoOp,
-}
 
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
@@ -553,67 +210,6 @@ pub enum RewardQuery {
     // /// When a new Section Actor share joins,
     // /// it queries the other shares for the section wallet history.
     // GetSectionWalletHistory,
-}
-
-impl From<RewardDuty> for NetworkDuties {
-    fn from(duty: RewardDuty) -> Self {
-        use DataSectionDuty::*;
-        use ElderDuty::*;
-        use NetworkDuty::*;
-        if matches!(duty, RewardDuty::NoOp) {
-            vec![]
-        } else {
-            vec![RunAsElder(RunAsDataSection(RunAsRewards(duty)))]
-        }
-    }
-}
-
-impl From<RewardDuty> for NetworkDuty {
-    fn from(duty: RewardDuty) -> Self {
-        use DataSectionDuty::*;
-        use ElderDuty::*;
-        use NetworkDuty::*;
-        RunAsElder(RunAsDataSection(RunAsRewards(duty)))
-    }
-}
-
-// --------------- Transfers ---------------
-
-/// Transfers of tokens on the network
-/// and querying of balances and history.
-#[allow(clippy::large_enum_variant)]
-#[derive(Debug)]
-pub enum TransferDuty {
-    ///
-    ProcessQuery {
-        query: TransferQuery,
-        ///
-        msg_id: MessageId,
-        ///
-        origin: SrcLocation,
-    },
-    ///
-    ProcessCmd {
-        cmd: TransferCmd,
-        ///
-        msg_id: MessageId,
-        ///
-        origin: SrcLocation,
-    },
-    NoOp,
-}
-
-impl From<TransferDuty> for NetworkDuties {
-    fn from(duty: TransferDuty) -> Self {
-        use ElderDuty::*;
-        use KeySectionDuty::*;
-        use NetworkDuty::*;
-        if matches!(duty, TransferDuty::NoOp) {
-            vec![]
-        } else {
-            vec![RunAsElder(RunAsKeySection(RunAsTransfers(duty)))]
-        }
-    }
 }
 
 /// Queries for information on accounts,

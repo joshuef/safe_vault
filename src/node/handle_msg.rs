@@ -6,7 +6,10 @@
 // KIND, either express or implied. Please review the Licences for the specific language governing
 // permissions and limitations relating to use of the SAFE Network Software.
 
-use crate::{Error, Result};
+use crate::{
+    node::messaging::send, node::messaging::send_to_nodes, node::GenesisStage, Error, Network,
+    Node, Result, Storage,
+};
 use log::debug;
 use sn_messaging::{
     client::{Message, NodeCmd, NodeSystemCmd, Query},
@@ -15,11 +18,17 @@ use sn_messaging::{
 
 use super::node_ops::{NodeDuties, NodeDuty};
 
-pub async fn handle(msg: Message, src: SrcLocation, dst: DstLocation) -> Result<NodeDuties> {
+pub async fn handle(
+    msg: Message,
+    src: SrcLocation,
+    dst: DstLocation,
+    mut storage: Storage,
+    network: Network,
+) -> Result<()> {
     debug!(">>>>>>>>>>>> Evaluating received msg. {:?}.", msg);
     let msg_id = msg.id();
     if let SrcLocation::EndUser(origin) = src {
-        return match_user_sent_msg(msg.clone(), origin);
+        return match_user_sent_msg(msg.clone(), origin, storage, network).await;
         // if res.is_empty() {
         //     return Err(Error::InvalidMessage(
         //         msg_id,
@@ -34,7 +43,7 @@ pub async fn handle(msg: Message, src: SrcLocation, dst: DstLocation) -> Result<
 
     match &dst {
         DstLocation::Section(_name) => {
-            match_section_msg(msg.clone(), src).await
+            match_section_msg(msg.clone(), src, storage, network).await
             // if res.is_empty() {
             //     match_node_msg(msg, src)
             // } else {
@@ -56,14 +65,37 @@ pub async fn handle(msg: Message, src: SrcLocation, dst: DstLocation) -> Result<
     }
 }
 
-fn match_user_sent_msg(msg: Message, origin: EndUser) -> Result<NodeDuties> {
+async fn match_user_sent_msg(
+    msg: Message,
+    origin: EndUser,
+    storage: Storage,
+    network: Network,
+) -> Result<()> {
     match msg {
         // TODO: match and parse directly
         Message::Query {
             query: Query::Data(query),
             id,
             ..
-        } => Ok(vec![NodeDuty::ProcessRead { query, id, origin }]),
+        } => {
+            if let Some(ref meta_data) = *storage.meta_data.lock().await {
+                let duty = meta_data.read(query, id, origin).await?;
+
+                match duty {
+                    NodeDuty::Send(msg) => send(msg, network.clone()).await?,
+                    NodeDuty::SendToNodes { msg, targets } => {
+                        send_to_nodes(targets, &msg, network.clone()).await?
+                    }
+                    NodeDuty::NoOp => {
+                        // do nothing
+                    }
+                }
+                // TODO: Do
+            }
+            // TODO: LAZY handle, no metadata
+
+            Ok(())
+        }
         // Message::Cmd {
         //     cmd: Cmd::Data { .. },
         //     id,
@@ -91,42 +123,43 @@ fn match_user_sent_msg(msg: Message, origin: EndUser) -> Result<NodeDuties> {
         //     msg_id: id,
         //     origin: SrcLocation::EndUser(origin),
         // }),
-        _ => Ok(vec![]),
+        _ => Ok(()),
     }
 }
 
-async fn match_section_msg(msg: Message, origin: SrcLocation) -> Result<NodeDuties> {
+async fn match_section_msg(
+    msg: Message,
+    origin: SrcLocation,
+    storage: Storage,
+    network: Network,
+) -> Result<()> {
     debug!("Evaluating section message: {:?}", msg);
 
-    match &msg {
+    match msg {
         Message::NodeCmd {
             cmd: NodeCmd::System(NodeSystemCmd::ProposeGenesis { credit, sig }),
             ..
         } => {
-            // TODO: Handle failure here;
-            return Ok(vec![NodeDuty::ReceiveGenesisProposal {
-                credit: credit.clone(),
-                sig: sig.clone(),
-            }]);
+            // storage.receive
+            storage
+                .receive_genesis_proposal(credit, sig, storage.clone(), network.clone())
+                .await
         }
 
         Message::NodeCmd {
             cmd: NodeCmd::System(NodeSystemCmd::AccumulateGenesis { signed_credit, sig }),
             ..
         } => {
-            return Ok(vec![NodeDuty::ReceiveGenesisAccumulation {
-                signed_credit: signed_credit.clone(),
-                sig: sig.clone(),
-            }])
+            storage
+                .receive_genesis_accumulation(signed_credit, sig, network.clone(), storage.clone())
+                .await?;
+            let genesis_tx = match storage.genesis_stage.lock().await.clone() {
+                GenesisStage::Completed(genesis_tx) => genesis_tx.clone(),
+                _ => return Ok(()),
+            };
+            storage.level_up(Some(genesis_tx)).await
         }
-        // NodeDuty::ReceiveGenesisProposal {
-        //     credit: credit.clone(),
-        //     sig: sig.clone(),
-        // } => {
-        //     self.receive_genesis_proposal(credit.clone(), sig.clone())
-        //     .await
-        // }
-        //
+
         // ------ metadata ------
         // Message::NodeQuery {
         //     query: NodeQuery::Metadata { query, origin },
@@ -138,15 +171,27 @@ async fn match_section_msg(msg: Message, origin: SrcLocation) -> Result<NodeDuti
         //     origin: *origin,
         // }
         // .into(),
-        // Message::NodeCmd {
-        //     cmd: NodeCmd::Metadata { cmd, origin },
-        //     id,
-        //     ..
-        // } => MetadataDuty::ProcessWrite {
-        //     cmd: cmd.clone(),
-        //     id: *id,
-        //     origin: *origin,
-        // }
+        Message::NodeCmd {
+            cmd: NodeCmd::Metadata { cmd, origin },
+            id,
+            ..
+        } => {
+            if let Some(ref mut meta_data) = *storage.meta_data.lock().await {
+                let duty = meta_data.write(cmd, id, origin).await?;
+
+                match duty {
+                    NodeDuty::Send(msg) => send(msg, network.clone()).await?,
+                    NodeDuty::SendToNodes { msg, targets } => {
+                        send_to_nodes(targets, &msg, network.clone()).await?
+                    }
+                    NodeDuty::NoOp => {
+                        // do nothing
+                    }
+                }
+            }
+
+            Ok(())
+        }
         // .into(),
         // //
         // // ------ adult ------
@@ -331,11 +376,11 @@ async fn match_section_msg(msg: Message, origin: SrcLocation) -> Result<NodeDuti
         //     user_wallets: user_wallets.to_owned(),
         // }
         // .into(),
-        _ => Ok(vec![]),
+        _ => Ok(()),
     }
 }
 
-fn match_node_msg(msg: Message, origin: SrcLocation) -> Result<NodeDuties> {
+fn match_node_msg(msg: Message, origin: SrcLocation) -> Result<()> {
     debug!("Evaluating node msg: {:?}", msg);
 
     match &msg {
@@ -492,6 +537,6 @@ fn match_node_msg(msg: Message, origin: SrcLocation) -> Result<NodeDuties> {
         //     }
         //     .into()
         // }
-        _ => Ok(vec![]),
+        _ => Ok(()),
     }
 }

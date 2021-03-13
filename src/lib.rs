@@ -48,5 +48,5 @@ pub use crate::{
     error::{Error, Result},
     network::Network,
     node::Node,
-    node::NodeInfo,
+    node::Storage,
 };

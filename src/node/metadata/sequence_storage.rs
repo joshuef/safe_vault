@@ -27,6 +27,7 @@ use sn_messaging::{
 use std::fmt::{self, Display, Formatter};
 
 /// Operations over the data type Sequence.
+#[derive(Clone)]
 pub(super) struct SequenceStorage {
     chunks: SequenceChunkStore,
 }

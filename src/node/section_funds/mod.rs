@@ -23,6 +23,7 @@ use sn_messaging::{
 
 /// The management of section funds,
 /// via the usage of a distributed AT2 Actor.
+#[derive(Clone)]
 pub enum SectionFunds {
     Rewarding(RewardingWallet),
     SoonChurning {

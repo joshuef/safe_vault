@@ -12,13 +12,14 @@ use super::{
 
 /// The various data type stores,
 /// that are only managed at Elders.
-pub(super) struct ElderStores {
+#[derive(Clone)]
+pub(super) struct DataStores {
     blob_register: BlobRegister,
     map_storage: MapStorage,
     sequence_storage: SequenceStorage,
 }
 
-impl ElderStores {
+impl DataStores {
     pub fn new(
         blob_register: BlobRegister,
         map_storage: MapStorage,

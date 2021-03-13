@@ -41,6 +41,7 @@ pub(crate) type SequenceChunkStore = ChunkStore<Sequence>;
 
 /// `ChunkStore` is a store of data held as serialised files on disk, implementing a maximum disk
 /// usage to restrict storage.
+#[derive(Clone)]
 pub(crate) struct ChunkStore<T: Chunk> {
     dir: PathBuf,
     // Maximum space allowed for all `ChunkStore`s to consume.

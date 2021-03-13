@@ -26,6 +26,7 @@ use sn_messaging::{
 use std::fmt::{self, Display, Formatter};
 
 /// Operations over the data type Map.
+#[derive(Clone)]
 pub(super) struct MapStorage {
     chunks: MapChunkStore,
 }

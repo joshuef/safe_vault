@@ -29,7 +29,10 @@ use std::{
 };
 use xor_name::XorName;
 
-use super::adult_reader::AdultReader;
+use super::adult_reader::SomethingThatShouldBeQueriedFromRoutingAdultReader;
+
+use futures::lock::Mutex;
+use std::sync::Arc;
 
 // The number of separate copies of a blob chunk which should be maintained.
 const CHUNK_COPY_COUNT: usize = 4;
@@ -46,13 +49,17 @@ struct HolderMetadata {
 }
 
 /// Operations over the data type Blob.
+#[derive(Clone)]
 pub(super) struct BlobRegister {
     dbs: ChunkHolderDbs,
-    reader: AdultReader,
+    reader: SomethingThatShouldBeQueriedFromRoutingAdultReader,
 }
 
 impl BlobRegister {
-    pub(super) fn new(dbs: ChunkHolderDbs, reader: AdultReader) -> Self {
+    pub(super) fn new(
+        dbs: ChunkHolderDbs,
+        reader: SomethingThatShouldBeQueriedFromRoutingAdultReader,
+    ) -> Self {
         Self { dbs, reader }
     }
 

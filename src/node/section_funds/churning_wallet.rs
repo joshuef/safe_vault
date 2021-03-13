@@ -18,6 +18,7 @@ use sn_messaging::{
 use xor_name::XorName;
 
 ///
+#[derive(Clone)]
 pub struct ChurningWallet {
     balance: Token,
     churn: Churn,

@@ -11,11 +11,11 @@ use crate::Network;
 // permissions and limitations relating to use of the SAFE Network Software.
 
 #[derive(Clone)]
-pub struct AdultReader {
+pub struct SomethingThatShouldBeQueriedFromRoutingAdultReader {
     network: Network,
 }
 
-impl AdultReader {
+impl SomethingThatShouldBeQueriedFromRoutingAdultReader {
     /// Access to the current state of our adult constellation
     pub fn new(network: Network) -> Self {
         Self { network }

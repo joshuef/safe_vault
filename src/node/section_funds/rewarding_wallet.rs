@@ -30,6 +30,7 @@ type SectionActor = TransferActor<Validator, ElderSigning>;
 
 /// The management of section funds,
 /// via the usage of a distributed AT2 Actor.
+#[derive(Clone)]
 pub struct RewardingWallet {
     actor: SectionActor,
     state: State,

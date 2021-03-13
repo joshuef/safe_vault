@@ -45,7 +45,7 @@ use self::{
     handle_network_event::handle_network_event,
     messaging::send,
     messaging::send_to_nodes,
-    metadata::{adult_reader::AdultReader, Metadata},
+    metadata::{adult_reader::SomethingThatShouldBeQueriedFromRoutingAdultReader, Metadata},
     node_ops::{NodeDuties, NodeDuty},
     section_funds::{rewarding_wallet::RewardingWallet, SectionFunds},
     state_db::store_new_reward_keypair,
@@ -68,6 +68,20 @@ pub struct NodeInfo {
     pub used_space: UsedSpace,
     /// The key used by the node to receive earned rewards.
     pub reward_key: PublicKey,
+
+    prefix: Option<Prefix>,
+    node_name: XorName,
+    node_id: Ed25519PublicKey,
+    genesis_stage: GenesisStage,
+
+    // TODO: ensure cloning of these has no adverse affects. Are we Arc all over?
+
+    // data operations
+    meta_data: Option<Metadata>,
+    // transfers
+    transfers: Option<Transfers>,
+    // reward payouts
+    section_funds: Option<SectionFunds>,
 }
 
 impl NodeInfo {
@@ -82,16 +96,6 @@ pub struct Node {
     network_api: Network,
     network_events: EventStream,
     node_info: NodeInfo,
-    prefix: Option<Prefix>,
-    node_name: XorName,
-    node_id: Ed25519PublicKey,
-    genesis_stage: GenesisStage,
-    // data operations
-    meta_data: Option<Metadata>,
-    // transfers
-    transfers: Option<Transfers>,
-    // reward payouts
-    section_funds: Option<SectionFunds>,
 }
 
 impl Node {
@@ -132,21 +136,21 @@ impl Node {
             used_space: UsedSpace::new(config.max_capacity()),
             reward_key,
             // wallet_section
+            prefix: Some(network_api.our_prefix().await),
+            node_name: network_api.our_name().await,
+            node_id: network_api.public_key().await,
+            genesis_stage: GenesisStage::None,
+            meta_data: None,
+            transfers: None,
+            section_funds: None,
         };
 
         debug!("NEW NODE after messaging");
 
         let node = Self {
-            prefix: Some(network_api.our_prefix().await),
-            node_name: network_api.our_name().await,
-            node_id: network_api.public_key().await,
             node_info,
             network_api,
             network_events,
-            genesis_stage: GenesisStage::None,
-            meta_data: None,
-            transfers: None,
-            section_funds: None,
         };
 
         Ok(node)
@@ -204,27 +208,27 @@ impl Node {
         match duty {
             NodeDuty::GetSectionElders { msg_id, origin } => {}
             NodeDuty::BeginFormingGenesisSection => {
-                self.genesis_stage =
+                self.node_info.genesis_stage =
                     begin_forming_genesis_section(self.network_api.clone()).await?;
             }
             NodeDuty::ReceiveGenesisProposal { credit, sig } => {
-                self.genesis_stage = receive_genesis_proposal(
+                self.node_info.genesis_stage = receive_genesis_proposal(
                     credit,
                     sig,
-                    self.genesis_stage.clone(),
+                    self.node_info.genesis_stage.clone(),
                     self.network_api.clone(),
                 )
                 .await?;
             }
             NodeDuty::ReceiveGenesisAccumulation { signed_credit, sig } => {
-                self.genesis_stage = receive_genesis_accumulation(
+                self.node_info.genesis_stage = receive_genesis_accumulation(
                     signed_credit,
                     sig,
-                    self.genesis_stage.clone(),
+                    self.node_info.genesis_stage.clone(),
                     self.network_api.clone(),
                 )
                 .await?;
-                let genesis_tx = match &self.genesis_stage {
+                let genesis_tx = match &self.node_info.genesis_stage {
                     GenesisStage::Completed(genesis_tx) => genesis_tx.clone(),
                     _ => return Ok(vec![]),
                 };
@@ -234,9 +238,9 @@ impl Node {
                 self.level_up(None).await?;
             }
             NodeDuty::LevelDown => {
-                self.meta_data = None;
-                self.transfers = None;
-                self.section_funds = None;
+                self.node_info.meta_data = None;
+                self.node_info.transfers = None;
+                self.node_info.section_funds = None;
             }
             NodeDuty::AssumeAdultDuties => {}
             NodeDuty::UpdateElderInfo {
@@ -270,12 +274,12 @@ impl Node {
                 send_to_nodes(targets, &msg, self.network_api.clone()).await?
             }
             NodeDuty::ProcessRead { query, id, origin } => {
-                if let Some(ref meta_data) = self.meta_data {
+                if let Some(ref meta_data) = self.node_info.meta_data {
                     return Ok(vec![meta_data.read(query, id, origin).await?]);
                 }
             }
             NodeDuty::ProcessWrite { cmd, id, origin } => {
-                if let Some(ref mut meta_data) = self.meta_data {
+                if let Some(ref mut meta_data) = self.node_info.meta_data {
                     return Ok(vec![meta_data.write(cmd, id, origin).await?]);
                 }
             }
@@ -287,9 +291,10 @@ impl Node {
     async fn level_up(&mut self, genesis_tx: Option<TransferPropagated>) -> Result<()> {
         // metadata
         let dbs = ChunkHolderDbs::new(self.node_info.path())?;
-        let reader = AdultReader::new(self.network_api.clone());
+        let reader =
+            SomethingThatShouldBeQueriedFromRoutingAdultReader::new(self.network_api.clone());
         let meta_data = Metadata::new(&self.node_info, dbs, reader).await?;
-        self.meta_data = Some(meta_data);
+        self.node_info.meta_data = Some(meta_data);
 
         // transfers
         let dbs = ChunkHolderDbs::new(self.node_info.root_dir.as_path())?;
@@ -302,7 +307,7 @@ impl Node {
         if let Some(genesis_tx) = genesis_tx {
             transfers.genesis(genesis_tx.clone()).await?;
         }
-        self.transfers = Some(transfers);
+        self.node_info.transfers = Some(transfers);
 
         // rewards
         // let actor = TransferActor::from_info(signing, reward_data.section_wallet, Validator {})?;

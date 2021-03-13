@@ -7,7 +7,7 @@
 // permissions and limitations relating to use of the SAFE Network Software.
 
 use super::{
-    blob_register::BlobRegister, elder_stores::ElderStores, map_storage::MapStorage,
+    blob_register::BlobRegister, data_stores::DataStores, map_storage::MapStorage,
     sequence_storage::SequenceStorage,
 };
 use crate::node::node_ops::{NetworkDuties, NodeMessagingDuty};
@@ -23,7 +23,7 @@ pub(super) async fn get_result(
     cmd: DataCmd,
     msg_id: MessageId,
     origin: EndUser,
-    stores: &mut ElderStores,
+    stores: &mut DataStores,
 ) -> Result<NodeDuty> {
     use DataCmd::*;
     info!("Writing Data");

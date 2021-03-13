@@ -8,13 +8,13 @@
 
 pub mod adult_reader;
 mod blob_register;
-mod elder_stores;
+mod data_stores;
 mod map_storage;
 mod reading;
 mod sequence_storage;
 mod writing;
 
-use self::adult_reader::AdultReader;
+use self::adult_reader::SomethingThatShouldBeQueriedFromRoutingAdultReader;
 use super::node_ops::NodeDuty;
 use crate::{
     capacity::ChunkHolderDbs,
@@ -23,7 +23,7 @@ use crate::{
     Network, Result,
 };
 use blob_register::BlobRegister;
-use elder_stores::ElderStores;
+use data_stores::DataStores;
 use map_storage::MapStorage;
 use sequence_storage::SequenceStorage;
 use sn_messaging::{
@@ -39,25 +39,26 @@ use xor_name::XorName;
 /// has been implemented; where the data types are all simply
 /// the structures + their metadata - handled at `Elders` - with
 /// all underlying data being chunks stored at `Adults`.
+#[derive(Clone)]
 pub struct Metadata {
-    elder_stores: ElderStores,
+    data_stores: DataStores,
 }
 
 impl Metadata {
     pub async fn new(
         node_info: &NodeInfo,
         dbs: ChunkHolderDbs,
-        reader: AdultReader,
+        reader: SomethingThatShouldBeQueriedFromRoutingAdultReader,
     ) -> Result<Self> {
         let blob_register = BlobRegister::new(dbs, reader);
         let map_storage = MapStorage::new(node_info).await?;
         let sequence_storage = SequenceStorage::new(node_info).await?;
-        let elder_stores = ElderStores::new(blob_register, map_storage, sequence_storage);
-        Ok(Self { elder_stores })
+        let data_stores = DataStores::new(blob_register, map_storage, sequence_storage);
+        Ok(Self { data_stores })
     }
 
     pub async fn read(&self, query: DataQuery, id: MessageId, origin: EndUser) -> Result<NodeDuty> {
-        reading::get_result(query, id, origin, &self.elder_stores).await
+        reading::get_result(query, id, origin, &self.data_stores).await
     }
 
     pub async fn write(
@@ -66,14 +67,14 @@ impl Metadata {
         id: MessageId,
         origin: EndUser,
     ) -> Result<NodeDuty> {
-        writing::get_result(cmd, id, origin, &mut self.elder_stores).await
+        writing::get_result(cmd, id, origin, &mut self.data_stores).await
     }
 
     // This should be called whenever a node leaves the section. It fetches the list of data that was
     // previously held by the node and requests the other holders to store an additional copy.
     // The list of holders is also updated by removing the node that left.
     pub async fn trigger_chunk_replication(&mut self, node: XorName) -> Result<NodeDuties> {
-        self.elder_stores
+        self.data_stores
             .blob_register_mut()
             .replicate_chunks(node)
             .await

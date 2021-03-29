@@ -105,10 +105,9 @@ impl NetworkEvents {
                 self.analysis.evaluate(Message::from(content)?, src, dst)
             }
             RoutingEvent::EldersChanged {
-                key,
                 elders,
-                prefix,
                 self_status_change,
+                sibling_elders,
                 ..
             } => {
                 let mut duties: NetworkDuties = match self_status_change {
@@ -118,9 +117,10 @@ impl NetworkEvents {
                 };
 
                 duties.push(NetworkDuty::from(NodeDuty::InitiateElderChange {
-                    prefix,
-                    key: PublicKey::Bls(key),
-                    elders: elders.into_iter().map(|e| XorName(e.0)).collect(),
+                    prefix: elders.prefix,
+                    key: PublicKey::Bls(elders.key),
+                    elders: elders.elders
+                        // .into_iter().map(|e| XorName(e.0)).collect(),
                 }));
 
                 Ok(duties)

@@ -2414,9 +2414,9 @@ dependencies = [
 
 [[package]]
 name = "sn_routing"
-version = "0.50.0"
+version = "0.51.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b3bd78b6b352f3fffee08bd81d9d9d95015a553d30be94249c36dc0143cf01c9"
+checksum = "e2778d4f95bed4c44e0303e3e991c84f0bccec23d4ff129e7c1d8914fd5904ea"
 dependencies = [
  "bincode",
  "bls_dkg",

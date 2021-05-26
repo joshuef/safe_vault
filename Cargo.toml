@@ -34,12 +34,12 @@ ed25519-dalek = "1.0.0"
 # sn_routing = "~0.71.0"
 # sn_data_types = "~0.18.3"
 # sn_messaging = "25.0.0"
-# sn_routing = {git="https://github.com/joshuef/sn_routing", branch="UpdateBytesInMsgDest"}
+sn_routing = {git="https://github.com/joshuef/sn_routing", branch="UpdateBytesInMsgDest"}
 
-sn_routing = {path="../sn_routing"}
+# sn_routing = {path="../sn_routing"}
 sn_data_types = "~0.18.3"
-sn_messaging = {path="../sn_messaging"}
-# sn_messaging = {git="https://github.com/joshuef/sn_messaging", branch="CheckingEfficiencyForSerialise"}
+# sn_messaging = {path="../sn_messaging"}
+sn_messaging = {git="https://github.com/joshuef/sn_messaging", branch="CheckingEfficiencyForSerialise"}
 
 sn_transfers = "~0.7.3"
 ed25519 = "1.0.1"

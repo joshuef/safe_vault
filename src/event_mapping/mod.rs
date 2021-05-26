@@ -44,26 +44,8 @@ pub async fn map_routing_event(event: RoutingEvent, network_api: &Network) -> Ma
     match event {
         RoutingEvent::MessageReceived {
             content, src, dst, ..
-<<<<<<< HEAD
         } => match NodeMsg::from(content) {
             Ok(msg) => map_node_msg(msg, src, dst),
-=======
-        } => match Msg::from(content.clone()) {
-            Ok(msg) => match msg {
-                Msg::Node(msg) => map_node_msg(msg, src, dst),
-                Msg::Client(msg) => {
-                    debug!(">>>>>> CLIENT MESSAGE RECEIVED: {:?}", msg);
-                    warn!(
-                        "Unexpected ClientMsg at RoutingEvent::MessageReceived {:?}",
-                        msg
-                    );
-                    return Mapping {
-                        op: NodeDuty::NoOp,
-                        ctx: None,
-                    };
-                }
-            },
->>>>>>> use gh routing
             Err(error) => {
                 warn!("Error decoding msg bytes, sent from {:?}", src);
 

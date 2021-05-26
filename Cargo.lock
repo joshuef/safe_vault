@@ -2289,7 +2289,8 @@ dependencies = [
 
 [[package]]
 name = "sn_messaging"
-version = "25.0.0"
+version = "23.0.0"
+source = "git+https://github.com/joshuef/sn_messaging?branch=CheckingEfficiencyForSerialise#d9f2f33fc0c9c502f89173945ff5f644df01beb2"
 dependencies = [
  "bincode",
  "bytes 1.0.1",
@@ -2357,6 +2358,7 @@ dependencies = [
 [[package]]
 name = "sn_routing"
 version = "0.71.0"
+source = "git+https://github.com/joshuef/sn_routing?branch=UpdateBytesInMsgDest#31f779fb37e87b5b360780b5540e3c7911e9952c"
 dependencies = [
  "bincode",
  "bls_dkg",

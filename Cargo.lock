@@ -2289,8 +2289,8 @@ dependencies = [
 
 [[package]]
 name = "sn_messaging"
-version = "23.0.0"
-source = "git+https://github.com/joshuef/sn_messaging?branch=CheckingEfficiencyForSerialise#d9f2f33fc0c9c502f89173945ff5f644df01beb2"
+version = "25.0.0"
+source = "git+https://github.com/joshuef/sn_messaging?branch=CheckingEfficiencyForSerialise#5f99d642ba6ab302c8fe59ccb85f0567bf2d8980"
 dependencies = [
  "bincode",
  "bytes 1.0.1",

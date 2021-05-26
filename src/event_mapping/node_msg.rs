@@ -23,7 +23,7 @@ use sn_messaging::{
 
 pub fn map_node_msg(msg: NodeMsg, src: SrcLocation, dst: DstLocation) -> Mapping {
     debug!(
-        "Handling Node message received event with id {}: {:?}",
+        ">>>>> Handling Node message received event with id {}: {:?}",
         msg.id(),
         msg
     );

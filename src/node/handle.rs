@@ -398,6 +398,7 @@ impl Node {
                 correlation_id,
                 src,
             } => {
+                debug!(">>>> Record read liveness");
                 let elder = self.role.as_elder_mut()?;
                 Ok(elder
                     .meta_data

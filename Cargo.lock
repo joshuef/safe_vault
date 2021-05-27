@@ -2290,6 +2290,7 @@ dependencies = [
 [[package]]
 name = "sn_messaging"
 version = "25.1.0"
+source = "git+https://github.com/joshuef/sn_messaging?branch=BytesMut#e957be3cba532818ddc594978a7eee0f82fba9c8"
 dependencies = [
  "bincode",
  "bytes 1.0.1",
@@ -2357,6 +2358,7 @@ dependencies = [
 [[package]]
 name = "sn_routing"
 version = "0.71.1"
+source = "git+https://github.com/joshuef/sn_routing?branch=DestDirect#f01a71bab8ac98afdbafaf29cbc03d5c2bfa70fc"
 dependencies = [
  "bincode",
  "bls_dkg",

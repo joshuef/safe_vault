@@ -130,6 +130,10 @@ pub async fn run_network() -> Result<(), String> {
         "--local",
         "--num-nodes",
         &node_count,
+        "--keep-alive-interval-msec",
+        "200",
+        "--idle-timeout-msec",
+        "1000"
     ];
 
     // If RUST_LOG was set we pass it down to the launch tool

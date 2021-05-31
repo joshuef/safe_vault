@@ -11,7 +11,7 @@ use crate::{
     node_ops::{MsgType, OutgoingLazyError, OutgoingMsg, OutgoingSupportingInfo},
     Error, Result,
 };
-use log::{error, trace};
+use log::{debug, error, trace};
 use sn_messaging::{
     client::ClientMsg, node::NodeMsg, Aggregation, DstLocation, Itinerary, SrcLocation,
 };
@@ -152,13 +152,32 @@ pub(crate) async fn send_to_nodes(
             .ok_or(Error::NoSectionPublicKey)?,
     );
 
+    let mut prev_target_pk = None;
+    let mut the_bytes = None;
     for target in targets {
         let target_section_pk = network
             .get_section_pk_by_name(&target)
             .await?
             .bls()
             .ok_or(Error::NoSectionPublicKeyKnown(target))?;
-        let bytes = &msg.serialize(target, target_section_pk, src_section_pk)?;
+
+        let this_pk = Some(target_section_pk);
+
+        if this_pk != prev_target_pk {
+
+            debug!("ssssssssssssss target pk: {:?}", target_section_pk);
+            let new_bytes = msg.serialize(target, target_section_pk, src_section_pk)?;
+            the_bytes = Some(new_bytes);
+            prev_target_pk = this_pk;
+
+
+        }
+        else {
+            debug!("ittttttmatched");
+        }
+            
+        let bytes = the_bytes.clone().ok_or(Error::CannotDirectMessage)?;
+            // header dest is not used in routing...
 
         network
             .send_message(
@@ -167,7 +186,7 @@ pub(crate) async fn send_to_nodes(
                     dst: DstLocation::Node(XorName(target.0)),
                     aggregation,
                 },
-                bytes.clone(),
+                bytes,
             )
             .await
             .map_or_else(

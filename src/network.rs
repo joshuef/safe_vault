@@ -151,6 +151,7 @@ impl Network {
 
     pub async fn get_section_pk_by_name(&self, name: &XorName) -> Result<PublicKey> {
         let (pk, _elders) = self.routing.matching_section(name).await;
+        
         if let Some(pk) = pk {
             let pk = PublicKey::from(pk);
             Ok(pk)
